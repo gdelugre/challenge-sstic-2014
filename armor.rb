@@ -57,9 +57,9 @@ class CPU
             regs = {}
             insn = @pattern.gsub(/\${[R](\w?)}/) { |token|
                 if $1.nil?
-                    @cpu.random_register
+                    @cpu.random_general_register
                 else
-                    regs[$1] ||= @cpu.random_register
+                    regs[$1] ||= @cpu.random_general_register
                 end
             }
             "\t#{insn}" 
@@ -86,11 +86,12 @@ class Function
 end
 
 class Block
-    attr_accessor :from, :to
+    attr_accessor :label, :from, :to
     attr_accessor :dirty
     attr_reader :instructions
-    def initialize(assembly, from, to, *insns)
+    def initialize(assembly, label, from, to, *insns)
         @assembly = assembly
+        @label = label
         @from, @to = from, to
         @instructions = insns
         @dirty = false
@@ -102,8 +103,8 @@ class Block
             if insert = process.call(@instructions[i])
                 insert = [ insert ] unless insert.kind_of?(Array)
                 @instructions[i,1] = insert
-                @dirty = true
                 i += insert.size - 1
+                self.dirty!
             end
             
             i += 1
@@ -123,6 +124,8 @@ class Block
     end
 
     def empty?; self.size.zero? end
+    def dirty?; @dirty end
+    def dirty!; @dirty = true end
     def size; @instructions.size end
     def [](i); @instructions[i] end
 
@@ -132,7 +135,7 @@ class Block
 end
 
 class AssemblyFileParser
-    attr_reader :cpu
+    attr_reader :cpu, :labels
     def initialize(cpu, path)
         @cpu = cpu
         @lines = File.read(path).lines.to_a.compact.map{|line| line.chomp}
@@ -144,16 +147,23 @@ class AssemblyFileParser
         @lines.join($/) + $/
     end
 
-    def add_label(pos, name); add_lines(pos, "#{name}:"); end
+    def add_label(pos, name, *insns); add_lines(pos, ["#{name}:"] + insns.map{|insn| "\t#{insn}"}); end
     def add_instructions(pos, *insns); add_lines(pos, *insns.map{|insn| "\t#{insn}"}) end
 
     def flush!
-        @blocks.select {|blk| blk.dirty }.sort_by {|blk| -blk.from }.each do |blk|
-            @lines[blk.from .. blk.to] = blk.instructions.map{|insn| insn.to_s}
+        @blocks.select {|blk| blk.dirty? }.sort_by {|blk| -blk.from }.each do |blk|
+            block_lines = []
+            block_lines.push("#{blk.label}:") if blk.label 
+            block_lines += blk.instructions.map{|insn| insn.to_s}
+            @lines[blk.from .. blk.to] = block_lines
             blk.dirty = false
         end
 
         reparse
+    end
+
+    def blocks
+        @blocks.map{|blk| Block.new(self, blk.label, blk.from, blk.to, *blk.instructions.dup)}
     end
 
     def each_block(&b)
@@ -170,7 +180,7 @@ class AssemblyFileParser
         case where
         when Integer then @blocks.find{|blk| (blk.from..blk.to).include?(where)}
         when String
-           @blocks.find{|blk| blk.from == @labels[where] + 1} if @labels.include?(where)
+           @blocks.find{|blk| blk.from == @labels[where]} if @labels.include?(where)
         end
     end
 
@@ -178,10 +188,19 @@ class AssemblyFileParser
         @functions.find{|fun| fun.name == name}
     end
 
+    def generate_label
+        label = ".L1000"
+        label.next! while @labels.include?(label)
+        @labels[label] = nil
+
+        label
+    end
+
     private
     def reparse
         line_number = 0
         block_from = nil
+        current_label = nil
         insns = []
         @blocks = []
         @labels = {}
@@ -189,19 +208,19 @@ class AssemblyFileParser
             if line =~ /^([^\t]+):$/
                 @labels[$1] = line_number
                 if block_from
-                    @blocks.push Block.new(self, block_from, line_number - 1, *insns) unless insns.empty?
-                    block_from = nil
+                    @blocks.push Block.new(self, current_label, block_from, line_number - 1, *insns) unless insns.empty?
                     insns = []
-                else
-                    block_from = line_number + 1
                 end
+                block_from = line_number
+                current_label = $1
 
             elsif line.length > 1 and line[0] == "\t" and line[1] != "."
                 insns.push(insn = @cpu.parse_instruction(line))
                 block_from ||= line_number
                 if insn.is_branch?
-                    @blocks.push Block.new(self, block_from, line_number, *insns)
+                    @blocks.push Block.new(self, current_label, block_from, line_number, *insns)
                     block_from = nil
+                    current_label = nil
                     insns = []
                 end
             end
@@ -209,7 +228,7 @@ class AssemblyFileParser
         end
 
         @functions = @labels.map {|label,line| 
-            if label[0] != "." and entry = self.block(line + 1)
+            if label[0] != "." and entry = self.block(line)
                 Function.new(label, entry)
             end
         }.compact!
@@ -258,6 +277,7 @@ assembly = AssemblyFileParser.new(CPU::AArch64, ARGV[0])
 
 ArmorPass.each_defined do |pass|
     pass.apply(assembly) if @options[:passes].include?(pass.name)
+    assembly.flush!
 end
 
 File.open(@options[:output] || ARGV[0], 'wb') do |fd|

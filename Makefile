@@ -16,18 +16,18 @@ TARGET=sstic14-armecage
 
 all: debug
 
-release:
+release: util
 	ruby make_bytecode.rb
 	$(COMPILE_RELEASE) $(SRC)
 	for obj in *.s; do \
-		ruby armor.rb --enable "shuffle" $$obj ; \
+		ruby armor.rb --enable "shuffle_blocks,shuffle_insns,junk" $$obj ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \
 	done
 	$(LINK) *.o -o $(TARGET)
 	rm -f *.o
 	#$(STRIP) $(TARGET)
 
-debug:
+debug: util
 	ruby make_bytecode.rb
 	$(COMPILE_DEBUG) $(SRC) -o $(TARGET)
 	rm -f *.o
@@ -45,4 +45,4 @@ util:
 	gcc chacha.c chacha_util_crypt.c -o chacha_crypt
 
 clean:
-	rm -f $(TARGET) *.o *.s *.bin a.out
+	rm -f $(TARGET) *.o *.s vm_bytecode.* a.out

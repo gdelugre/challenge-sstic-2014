@@ -2,7 +2,7 @@
 # Shuffles instructions into each basic block.
 #
 class ShuffleCode < ArmorPass
-    NAME = "shuffle"
+    NAME = "shuffle_insns"
 
     def apply(assembly)
         assembly.each_block { |blk|

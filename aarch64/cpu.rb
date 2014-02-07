@@ -1,8 +1,14 @@
 class CPU::AArch64 < CPU
+    GENERAL_REGISTERS = 
+    {
+        32 => (0..30).to_a.map{|i| "x#{i}"},
+        16 => (0..30).to_a.map{|i| "w#{i}"}
+    }
+
     REGISTERS = 
     {
-        32 => (0..30).to_a.map{|i| "x#{i}"} + ['sp', 'cpsr'],
-        16 => (0..30).to_a.map{|i| "w#{i}"}
+        32 => GENERAL_REGISTERS[32] + ['sp', 'cpsr'],
+        16 => GENERAL_REGISTERS[16]
     }
 
     class Vector
@@ -146,8 +152,8 @@ class CPU::AArch64 < CPU
         REGISTERS.values.any? {|regset| regset.include?(name) }
     end
 
-    def self.random_register
-        REGISTERS[32].sample
+    def self.random_general_register
+        GENERAL_REGISTERS[32].sample
     end
 
     class InstructionPattern < CPU::InstructionPattern
