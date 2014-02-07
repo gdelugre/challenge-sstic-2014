@@ -1,0 +1,351 @@
+#include <stddef.h>
+#include <sys/mman.h>
+
+#include "vm.h"
+#include "vm_opcodes.h"
+#include "syscalls.h"
+#include "chacha.h"
+
+/*
+ * Converts a VM address into a real address.
+ * VM pages are 64-bytes long.
+ *
+ * vm_addr_t: [page: 18 .. 6] [offset: 5 .. 0] 
+ *
+ * VM page address is between [ 0, 8191 ].
+ * VM offset is between [ 0, 63 ].
+ */
+static void *vm_address_translate(vm_state *state, vm_addr_t addr)
+{
+    vm_page_t vpage;
+    vm_off_t voff;
+
+    if ( addr > VM_MAX_ADDR )
+        return NULL;
+
+    vpage = VM_PAGE(addr);
+    voff = VM_PAGE_OFFSET(addr);
+
+    return (void *)(state->vmem) + (shuffle(vpage) << VM_PAGE_SHIFT) + voff;
+}
+
+static int vm_page_write(vm_state *state, vm_addr_t vaddr, void *buffer)
+{
+    void *data = vm_address_translate(state, VM_PAGE_ALIGN(vaddr));
+    if ( !data )
+        return 0;
+
+    state->vmem_ctx.input[12] = VM_PAGE(vaddr);
+    state->vmem_ctx.input[13] = (VM_PAGE(vaddr) >> 32UL);
+
+    ECRYPT_encrypt_bytes(&state->vmem_ctx, buffer, data, VM_PAGE_SIZE);
+    return VM_PAGE_SIZE;
+}
+
+static void *vm_cache_get_free_slot(vm_state *state, vm_page_t page)
+{
+    int i, lru = 0;
+    vm_time_t oldest = -1;
+    vm_cache_entry *lru_entry;
+
+    /* Lookup for a free entry. */
+    for ( i = 0; i < VM_CACHE_SIZE; i++ )
+    {
+        if ( state->cache_entries[i].flags.free )
+        {
+            state->cache_entries[i].flags.free = 0;
+            state->cache_entries[i].flags.dirty = 0;
+            state->cache_entries[i].page = page;
+            state->cache_entries[i].last_access = state->ticks;
+            
+            return state->cache + VM_PAGE_SIZE * i;
+        }
+
+        /* Keep track of least recently used entry. */
+        if ( state->cache_entries[i].last_access < oldest )
+        {
+            lru = i;
+            oldest = state->cache_entries[i].last_access;
+        }
+    }
+
+    /* No free entry available. Destroy the oldest entry. */
+    lru_entry = &state->cache_entries[lru];
+
+    /* Commit cache to memory if necessary. */
+    if ( lru_entry->flags.dirty )
+        vm_page_write(state, lru_entry->page << VM_PAGE_SHIFT, state->cache + lru * VM_PAGE_SIZE);
+
+    lru_entry->flags.free = 0;
+    lru_entry->flags.dirty = 0;
+    lru_entry->page = page;
+    lru_entry->last_access = state->ticks;
+
+    return state->cache + lru * VM_PAGE_SIZE;
+}
+
+static void *vm_page_read(vm_state *state, vm_addr_t vaddr)
+{
+    void *data = vm_address_translate(state, VM_PAGE_ALIGN(vaddr));
+    if ( !data )
+        return 0;
+
+    void *cache = vm_cache_get_free_slot(state, VM_PAGE(vaddr));
+
+    vm_print("memory: data:%p cache:%p\n", data, cache);
+    state->vmem_ctx.input[12] = VM_PAGE(vaddr);
+    state->vmem_ctx.input[13] = (VM_PAGE(vaddr) >> 32UL);
+
+    ECRYPT_decrypt_bytes(&state->vmem_ctx, data, cache, VM_PAGE_SIZE);
+    vm_hexdump(cache, VM_PAGE_SIZE);
+
+    return cache;
+}
+
+static void *vm_page_get_from_cache(vm_state *state, vm_page_t page)
+{
+    int i;
+
+    for ( i = 0; i < VM_CACHE_SIZE; i++ )
+    {
+        if ( !state->cache_entries[i].flags.free && state->cache_entries[i].page == page )
+        {
+            state->cache_entries[i].last_access = state->ticks;
+            return state->cache + i * VM_PAGE_SIZE;
+        }
+    }
+
+    return NULL;
+}
+
+static void *vm_page_get(vm_state *state, vm_addr_t vaddr)
+{
+    void *cache = vm_page_get_from_cache(state, VM_PAGE(vaddr));
+
+    if ( !cache )
+    {
+        vm_print("memory: Cache miss for address %lx\n", vaddr);
+        return vm_page_read(state, vaddr);
+    }
+
+    return cache;
+}
+
+static void vm_page_put(vm_state *state, void *page)
+{
+    VM_CACHE_ENTRY(state, page).flags.dirty = 1;
+}
+
+static int vm_read(vm_state *state, vm_addr_t vaddr, void *buffer, size_t size)
+{
+    void *page;
+    long rem = size;
+    size_t nr_read = 0, block_size;
+    vm_off_t page_off;
+
+    vm_print("memory: Reading %ld bytes at address %lx\n", size, vaddr);
+    while ( rem ) 
+    {
+        page = vm_page_get(state, vaddr);
+        if ( page == NULL)
+            break;
+
+        block_size = MIN(rem, VM_PAGE_SIZE - VM_PAGE_OFFSET(vaddr));
+        page_off = VM_PAGE_OFFSET(vaddr);
+
+        _memcpy(buffer, page + page_off, block_size);
+        nr_read += block_size;
+        rem -= block_size; 
+
+        buffer += block_size;
+        vaddr += block_size;
+    }
+
+    return nr_read;
+}
+
+static int vm_write(vm_state *state, vm_addr_t vaddr, void *buffer, size_t size)
+{
+    void *page;
+    long rem = size;
+    size_t nr_written = 0, block_size;
+    vm_off_t page_off;
+    
+    while ( rem )
+    {
+        page = vm_page_get(state, vaddr);
+        if ( page == NULL )
+            break;
+
+        block_size = MIN(rem, VM_PAGE_SIZE - VM_PAGE_OFFSET(vaddr));
+        page_off = VM_PAGE_OFFSET(vaddr);
+
+        _memcpy(page + page_off, buffer, block_size);
+        vm_page_put(state, page);
+
+        nr_written += block_size;
+        rem -= block_size;
+        buffer += block_size;
+        vaddr += block_size;
+    }
+
+    return nr_written;
+}
+
+void vm_stop(vm_state *state, int status)
+{
+    state->flags.running = 0;
+    state->status = status;
+}
+
+static vm_reg_t vm_get_register(vm_state *state, int n)
+{
+    vm_reg_t reg;
+
+    if ( n > VM_NR_REGISTERS )
+    {
+        vm_stop(state, VM_STATUS_INTERNAL_ERROR);
+        return -1;
+    }
+
+    if ( vm_read(state, n * sizeof(vm_reg_t), &reg, sizeof(reg)) != sizeof(reg) )
+    {
+        vm_stop(state, VM_STATUS_INTERNAL_ERROR);
+        return -1;
+    }
+
+    return reg;
+} 
+
+static void vm_set_register(vm_state * state, int n, vm_reg_t value)
+{
+    if ( n > VM_NR_REGISTERS )
+    {
+        vm_stop(state, VM_STATUS_INTERNAL_ERROR);
+        return;
+    }
+
+    if ( vm_write(state, n * sizeof(vm_reg_t), &value, sizeof(value)) != sizeof(value) )
+    {
+        vm_stop(state, VM_STATUS_INTERNAL_ERROR);
+        return;
+    }
+}
+
+static vm_addr_t vm_current_instruction_pointer(vm_state *state)
+{
+    vm_addr_t ip;
+
+    if ( vm_read(state, offsetof(vm_memory, ctx.ip), &ip, sizeof(ip)) != sizeof(ip) )
+        return VM_INVALID_ADDR;
+    
+    return ip; 
+}
+
+int vm_execute(vm_state *state)
+{
+    vm_addr_t ip;
+    vm_insn_t insn;
+
+    while ( state->flags.running )
+    {
+        ip = vm_current_instruction_pointer(state);
+        if ( ip == VM_INVALID_ADDR )
+        {
+            vm_stop(state, VM_STATUS_BAD_IP);
+            break;
+        } 
+
+        if ( vm_read(state, ip, &insn, sizeof(insn)) != sizeof(insn) )
+        {
+            vm_stop(state, VM_STATUS_BAD_IP);
+            break;
+        }
+
+        vm_print("Executing instruction [opcode:%x, reg:%x, addr:%x, cond:%x]\n", 
+                insn.opcode,
+                insn.reg,
+                insn.addr,
+                insn.cond);
+
+        ip += sizeof(vm_insn_t);
+        switch ( insn.opcode )
+        {
+            case VM_OP_HALT:
+                vm_stop(state, VM_STATUS_NO_ERROR);
+                break;
+
+            default:
+                vm_stop(state, VM_STATUS_BAD_INSN);
+                break;
+        }
+    }
+
+    return state->status;
+}
+
+/* Starts VM execution. */
+int vm_start(vm_state *state)
+{
+    state->flags.running = 1;
+    return vm_execute(state);
+}
+
+static int vm_initialize_cache(vm_state *vstate)
+{
+    int i;
+
+    /* Initialize cache entries. */
+    for ( i = 0; i < VM_CACHE_SIZE; i++ )
+    {
+        vstate->cache_entries[i].flags.free = 1;
+        vstate->cache_entries[i].flags.dirty = 0;
+        vstate->cache_entries[i].last_access = 0;
+        vstate->cache_entries[i].page = (vm_page_t) 0;
+    }
+
+    /* Allocate VM memory cache. */
+    vstate->cache = (void *) sys_mmap(NULL, ROUND_PAGE(VM_PAGE_SIZE * VM_CACHE_SIZE), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
+    if ( !vstate->cache )
+        return -1;
+
+    return 0;
+}
+
+/*
+ * Initializes a new virtual machine instance.
+ */
+int vm_initialize(vm_memory *data, const size_t vm_size, vm_state **pstate)
+{
+    vm_state *vstate;
+
+    /* Allocate VM state structure. */
+    vstate = (vm_state *) sys_mmap(NULL, ROUND_PAGE(sizeof(vm_state)), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
+    if ( !vstate )
+        return -1;
+
+    /* Allocate VM memory. */
+    vstate->vmem = (vm_memory *) sys_mmap(NULL, ROUND_PAGE(vm_size), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
+    if ( !vstate->vmem )
+        return -1;
+    
+    /* Create VM cache. */
+    if ( vm_initialize_cache(vstate) < 0 )
+        return -1;
+
+    static uint8_t memory_key[] = "\x0b\xad\xb1\x05\x0b\xad\xb1\x05\x0b\xad\xb1\x05\x0b\xad\xb1\x05";
+    static uint8_t memory_iv[] = "\x00\x00\x00\x00\x00\x00\x00\x00";
+
+    ECRYPT_init();
+    ECRYPT_keysetup(&vstate->vmem_ctx, memory_key, 128, 0);
+    ECRYPT_ivsetup(&vstate->vmem_ctx, memory_iv);
+
+    vstate->status = VM_STATUS_NO_ERROR;
+    vstate->flags.running = 0;
+    vstate->ticks = 0;
+    _memcpy(vstate->vmem, data, vm_size);
+
+    *pstate = vstate;
+    return 0;
+}
+
