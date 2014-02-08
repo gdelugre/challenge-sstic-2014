@@ -43,6 +43,13 @@ class CPU
             @operands = operands
         end
 
+        def =~(pattern)
+            case pattern
+            when Regexp then self.to_s =~ pattern
+            else self.to_s =~ pattern.to_re
+            end
+        end
+
         def to_s
             "\t#{@opcode} #{@operands.join(", ")}"
         end
@@ -56,13 +63,35 @@ class CPU
         def make
             regs = {}
             insn = @pattern.gsub(/\${[R](\w?)}/) { |token|
-                if $1.nil?
-                    @cpu.random_general_register
+                if $1.empty?
+                    @cpu.general_registers.sample
                 else
-                    regs[$1] ||= @cpu.random_general_register
+                    regs[$1] ||= @cpu.general_registers.sample
                 end
             }
             "\t#{insn}" 
+        end
+
+        def to_re
+            %r{^\t#{
+                backrefs = []
+                @pattern
+                    .gsub(/\s+/,"\\s+")                 # expand white characters
+                    .gsub(/\${([R])(\w?)}/) { |token|   # expand tokens
+                        if $2.empty?
+                            "(#{@cpu.general_registers.join('|')})"
+                        elsif backrefs.include?($2)
+                            "(\\k<#{$1}#{$2}>)"
+                        else
+                            backrefs.push($2)
+                            "(?<#{$1}#{$2}>(#{@cpu.general_registers.join('|')}))"
+                        end
+                    }
+            }}
+        end
+
+        def ===(insn)
+            not (insn.to_s =~ self.to_re).nil?
         end
     end
 end

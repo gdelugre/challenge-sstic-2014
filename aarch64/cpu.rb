@@ -1,14 +1,14 @@
 class CPU::AArch64 < CPU
     GENERAL_REGISTERS = 
     {
-        32 => (0..30).to_a.map{|i| "x#{i}"},
-        16 => (0..30).to_a.map{|i| "w#{i}"}
+        64 => (0..30).to_a.map{|i| "x#{i}"},
+        32 => (0..30).to_a.map{|i| "w#{i}"}
     }
 
     REGISTERS = 
     {
-        32 => GENERAL_REGISTERS[32] + ['sp', 'cpsr'],
-        16 => GENERAL_REGISTERS[16]
+        64 => GENERAL_REGISTERS[64] + ['sp', 'cpsr'],
+        32 => GENERAL_REGISTERS[32]
     }
 
     class Vector
@@ -152,8 +152,8 @@ class CPU::AArch64 < CPU
         REGISTERS.values.any? {|regset| regset.include?(name) }
     end
 
-    def self.random_general_register
-        GENERAL_REGISTERS[32].sample
+    def self.general_registers
+        GENERAL_REGISTERS[64]
     end
 
     class InstructionPattern < CPU::InstructionPattern
@@ -171,7 +171,7 @@ class CPU::AArch64 < CPU
     end
 
     def self.analyze_registers(block)
-        current = { :read => REGISTERS[32].dup, :write => REGISTERS[32].dup }
+        current = { :read => REGISTERS[64].dup, :write => REGISTERS[64].dup }
         states = [ current ]
 
         block.each_instruction do |insn|
@@ -187,7 +187,7 @@ class CPU::AArch64 < CPU
 
     def self.allocatable_registers(usage)
        trashable = []
-       REGISTERS[32].each { |reg|
+       REGISTERS[64].each { |reg|
             usage.each {|state|
                 break if state[:read].include?(reg)
                 if state[:write].include?(reg)
