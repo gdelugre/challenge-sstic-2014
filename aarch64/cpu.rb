@@ -74,7 +74,7 @@ class CPU::AArch64 < CPU
 
             case @opcode
             when 'svc', 'sys'
-                modified += REGISTERS[32].dup
+                modified += REGISTERS[64].dup
             when /c?cm[pn]/, 'tst'
                 modified.push 'cpsr'
             when /^st.*/
@@ -100,7 +100,7 @@ class CPU::AArch64 < CPU
 
             case @opcode
             when 'svc', 'sys'
-                return REGISTERS[32].dup
+                return REGISTERS[64].dup
             when /c?cm[p|n]/, /cin[cv]/, 'cneg', 'tst', /^cb.*/, /^cs.*/, /^tb.*/
                 used.push 'cpsr'
                 start = 0

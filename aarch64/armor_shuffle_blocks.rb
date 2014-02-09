@@ -17,7 +17,7 @@ class ShuffleBlocks < ArmorPass
         # Generates a new randomized layout.
         # XXX: Shuffling adjacent blocks can cause problems.
         flip = true
-        layout = assembly.blocks.select{|blk| flip = not(flip); flip and blk.label and blk.label[0] == "."}.shuffle!
+        layout = assembly.blocks.select{|blk| flip = !flip; flip and blk.label and blk.label[0] == "."}.shuffle!
 
         i = 0
         assembly.each_block { |blk|

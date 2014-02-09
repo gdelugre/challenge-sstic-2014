@@ -47,7 +47,7 @@ class ShuffleCode < ArmorPass
                 if not max_pos or max_pos == i # no shuffle possible
                     shuffled[i] = blk.instructions[i]
                 else
-                    shuffled.insert(rand(i..shifts[i]), blk.instructions[i])
+                    shuffled.insert(rand(i..max_pos), blk.instructions[i])
                 end
             end
 

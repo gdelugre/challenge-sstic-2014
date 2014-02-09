@@ -84,7 +84,7 @@ class CPU
                             "(\\k<#{$1}#{$2}>)"
                         else
                             backrefs.push($2)
-                            "(?<#{$1}#{$2}>(#{@cpu.general_registers.join('|')}))"
+                            "(?<#{$1}#{$2}>#{@cpu.general_registers.join('|')})"
                         end
                     }
             }}
@@ -167,7 +167,7 @@ class AssemblyFileParser
     attr_reader :cpu, :labels
     def initialize(cpu, path)
         @cpu = cpu
-        @lines = File.read(path).lines.to_a.compact.map{|line| line.chomp}
+        @lines = File.read(path).lines.to_a.compact.map(&:chomp)
 
         reparse
     end
@@ -183,7 +183,7 @@ class AssemblyFileParser
         @blocks.select {|blk| blk.dirty? }.sort_by {|blk| -blk.from }.each do |blk|
             block_lines = []
             block_lines.push("#{blk.label}:") if blk.label 
-            block_lines += blk.instructions.map{|insn| insn.to_s}
+            block_lines += blk.instructions.map(&:to_s)
             @lines[blk.from .. blk.to] = block_lines
             blk.dirty = false
         end
@@ -243,7 +243,7 @@ class AssemblyFileParser
                 block_from = line_number
                 current_label = $1
 
-            elsif line.length > 1 and line[0] == "\t" and line[1] != "."
+            elsif line.length > 1 and line[0] == ?\t and line[1] != ?.
                 insns.push(insn = @cpu.parse_instruction(line))
                 block_from ||= line_number
                 if insn.is_branch?
@@ -305,9 +305,17 @@ end
 assembly = AssemblyFileParser.new(CPU::AArch64, ARGV[0])
 
 ArmorPass.each_defined do |pass|
-    pass.apply(assembly) if @options[:passes].include?(pass.name)
-    assembly.flush!
+    if @options[:passes].include?(pass.name)
+        puts "[+] Applying pass '#{pass.name}' on #{ARGV[0]}..."
+        pass.apply(assembly) 
+        assembly.flush!
+    end
 end
+
+#p CPU::AArch64::NOOP.last.to_re
+#p "\tmadd x25, x3, xzr, x25" =~ CPU::AArch64::NOOP.last.to_re
+#p $1, $2, $3, $4
+#p $~[:Rx]
 
 File.open(@options[:output] || ARGV[0], 'wb') do |fd|
     fd.write(assembly.dump)
