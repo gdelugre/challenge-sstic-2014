@@ -56,42 +56,62 @@ class CPU
     end
 
     class InstructionPattern
-        def initialize(pattern)
-            @pattern = pattern
+        def initialize(patterns)
+            @patterns = patterns.lines.map(&:strip)
         end
 
-        def make
-            regs = {}
-            insn = @pattern.gsub(/\${[R](\w?)}/) { |token|
-                if $1.empty?
-                    @cpu.general_registers.sample
-                else
-                    regs[$1] ||= @cpu.general_registers.sample
-                end
+        def make(regs = {})
+            map = regs.dup
+            @patterns.map { |pattern|
+                insn = pattern.gsub(/\${([RI])(\w?)}/) { |token|
+                    case $1
+                    when 'I'
+                        fail "Unspecified immediate constant" if $2.empty? or not map.include?($1+$2)
+                        map[$1+$2]
+
+                    when 'R'
+                        if $2.empty?
+                            @cpu.general_registers.sample
+                        else
+                            map[$1+$2] ||= @cpu.general_registers.sample
+                        end
+                    end
+                }
+                "\t#{insn}" 
             }
-            "\t#{insn}" 
         end
 
         def to_re
+            fail "Multiline patterns cannot be converted to regular expression yet." if @patterns.size != 1
             %r{^\t#{
                 backrefs = []
-                @pattern
+                @patterns[0]
                     .gsub(/\s+/,"\\s+")                 # expand white characters
-                    .gsub(/\${([R])(\w?)}/) { |token|   # expand tokens
+                    .gsub(/\${([RI])(\w?)}/) { |token|   # expand tokens
                         if $2.empty?
-                            "(#{@cpu.general_registers.join('|')})"
-                        elsif backrefs.include?($2)
+                            case $1
+                            when 'R' then "(#{@cpu.general_registers.join('|')})"
+                            when 'I' then "(#?-?\\d+)"
+                            end
+                        elsif backrefs.include?($1+$2)
                             "(\\k<#{$1}#{$2}>)"
                         else
-                            backrefs.push($2)
-                            "(?<#{$1}#{$2}>#{@cpu.general_registers.join('|')})"
+                            backrefs.push($1+$2)
+                            case $1
+                            when 'R' then "(?<#{$1}#{$2}>#{@cpu.general_registers.join('|')})"
+                            when 'I' then "(?<#{$1}#{$2}>#?-?\\d+)"
+                            end
                         end
                     }
-            }}
+            }$}
         end
 
         def ===(insn)
             not (insn.to_s =~ self.to_re).nil?
+        end
+
+        def match(insn)
+            self.to_re.match(insn.to_s)
         end
     end
 end
@@ -304,6 +324,18 @@ end
 
 assembly = AssemblyFileParser.new(CPU::AArch64, ARGV[0])
 
+#p CPU::AArch64::NOOP.last.to_re
+#p "\tmadd x25, x3, xzr, x25" =~ CPU::AArch64::NOOP.last.to_re
+#p $1, $2, $3, $4
+#p $~['Rx']
+#CPU::AArch64::Instruction.new("madd", "x25", "x3", "xzr", "x25") =~ CPU::AArch64::NOOP.last
+#p $~
+
+#p CPU::AArch64::InstructionPattern.new("mov ${Rx}, ${Im}").to_re
+#p CPU::AArch64::Instruction.new("mov", "x25", "#128").to_s =~ CPU::AArch64::InstructionPattern.new("mov ${Rx}, ${Im}").to_re
+#p $~
+#exit
+
 ArmorPass.each_defined do |pass|
     if @options[:passes].include?(pass.name)
         puts "[+] Applying pass '#{pass.name}' on #{ARGV[0]}..."
@@ -311,11 +343,6 @@ ArmorPass.each_defined do |pass|
         assembly.flush!
     end
 end
-
-#p CPU::AArch64::NOOP.last.to_re
-#p "\tmadd x25, x3, xzr, x25" =~ CPU::AArch64::NOOP.last.to_re
-#p $1, $2, $3, $4
-#p $~[:Rx]
 
 File.open(@options[:output] || ARGV[0], 'wb') do |fd|
     fd.write(assembly.dump)

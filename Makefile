@@ -20,7 +20,7 @@ release: util
 	ruby make_bytecode.rb
 	$(COMPILE_RELEASE) $(SRC)
 	for obj in *.s; do \
-		ruby armor.rb --enable "shuffle_blocks,shuffle_insns,junk" $$obj ; \
+		ruby armor.rb --enable "shuffle_blocks,shuffle_insns,junk,expand_insns" $$obj ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \
 	done
 	$(LINK) *.o -o $(TARGET)

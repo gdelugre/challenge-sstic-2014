@@ -26,7 +26,7 @@ class InsertJunk < ArmorPass
     def apply(assembly)
         assembly.each_block {|blk|
             blk.each_instruction {|insn|
-                [CPU::AArch64::NOOP.sample.make, insn] if rand(20).zero?
+                [CPU::AArch64::NOOP.sample.make, insn].flatten if rand(20).zero?
             }
         }
     end
