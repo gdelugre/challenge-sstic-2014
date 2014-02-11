@@ -62,7 +62,7 @@ class CPU::AArch64 < CPU
 
             case @opcode
             when /^b/ then @operands.first
-            when 'ret' then @operands.empty? ? 'r30' : @operands.first
+            when 'ret' then @operands.empty? ? 'x30' : @operands.first
             when /^cb/ then @operands[1]
             when /^tb/ then @operands[2]
             end
@@ -152,8 +152,14 @@ class CPU::AArch64 < CPU
         REGISTERS.values.any? {|regset| regset.include?(name) }
     end
 
-    def self.general_registers
-        GENERAL_REGISTERS[64]
+    def self.general_registers(size = 64)
+        GENERAL_REGISTERS[size]
+    end
+
+    def self.register_size(name)
+        REGISTERS.each_key do |size, set|
+            return size if set.include?(name)
+        end
     end
 
     class InstructionPattern < CPU::InstructionPattern
