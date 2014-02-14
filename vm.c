@@ -2,7 +2,6 @@
 #include <sys/mman.h>
 
 #include "vm.h"
-#include "vm_opcodes.h"
 #include "syscalls.h"
 #include "chacha.h"
 
@@ -198,6 +197,22 @@ void vm_stop(vm_state *state, int status)
     state->status = status;
 }
 
+static int vm_read_word(vm_state *state, vm_addr_t addr, vm_word_t *word)
+{
+    if ( vm_read(state, addr, word, sizeof(*word)) != sizeof(*word) )
+        return -1;
+
+    return 0;
+}
+
+static int vm_write_word(vm_state *state, vm_addr_t addr, vm_word_t word)
+{
+    if ( vm_write(state, addr, &word, sizeof(word)) != sizeof(word) )
+       return -1; 
+
+    return 0;
+}
+
 static vm_reg_t vm_get_register(vm_state *state, int n)
 {
     vm_reg_t reg;
@@ -208,7 +223,7 @@ static vm_reg_t vm_get_register(vm_state *state, int n)
         return -1;
     }
 
-    if ( vm_read(state, n * sizeof(vm_reg_t), &reg, sizeof(reg)) != sizeof(reg) )
+    if ( vm_read_word(state, n * sizeof(vm_reg_t), &reg) < 0 )
     {
         vm_stop(state, VM_STATUS_INTERNAL_ERROR);
         return -1;
@@ -225,7 +240,7 @@ static void vm_set_register(vm_state * state, int n, vm_reg_t value)
         return;
     }
 
-    if ( vm_write(state, n * sizeof(vm_reg_t), &value, sizeof(value)) != sizeof(value) )
+    if ( vm_write_word(state, n * sizeof(vm_reg_t), value) < 0 )
     {
         vm_stop(state, VM_STATUS_INTERNAL_ERROR);
         return;
@@ -262,33 +277,67 @@ int vm_execute(vm_state *state)
             break;
         }
 
-        vm_print("Executing instruction [opcode:%x, reg:%x, addr:%x, cond:%x]\n", 
+        vm_print("Executing instruction %x at %x [opcode:%x, reg:%x, addr:%x, cond:%x]\n", 
+                insn,
+                ip,
                 insn.opcode,
                 insn.reg,
                 insn.addr,
                 insn.cond);
 
         ip += sizeof(vm_insn_t);
-        switch ( insn.opcode )
-        {
-            case VM_OP_HALT:
-                vm_stop(state, VM_STATUS_NO_ERROR);
-                break;
+        vm_set_register(state, 7, ip);
 
-            default:
-                vm_stop(state, VM_STATUS_BAD_INSN);
-                break;
+        if ( insn.opcode >= __NR_VM_OPCODES )
+        {
+            vm_stop(state, VM_STATUS_BAD_INSN);
+            break;
         }
+        
+        /* Check conditions flags. */
+        if ( insn.cond == VM_COND_IS_EQUAL && !state->flags.equal )
+            continue;
+
+        if ( insn.cond == VM_COND_IS_LOWER && !state->flags.lower )
+            continue;
+
+        if ( insn.cond == VM_COND_IS_HIGHER && !state->flags.higher )
+            continue;
+
+        /* Execute the opcode handler. */
+        state->handlers[insn.opcode](state, insn);
     }
 
     return state->status;
 }
 
+static void vm_crash_report(vm_state *state)
+{
+    static char *status_msg[] =
+    {
+        [VM_STATUS_NO_ERROR] = "No error.\n",
+        [VM_STATUS_BAD_IP] = "Bad instruction pointer.\n",
+        [VM_STATUS_BAD_INSN] = "Invalid instruction.\n",
+        [VM_STATUS_MEMORY_FAULT] = "Memory fault.\n",
+        [VM_STATUS_INTERNAL_ERROR] = "Internal error.\n",
+        [VM_STATUS_INVALID_ARGUMENT] = "Invalid argument.\n",
+    };
+
+    vm_println(status_msg[state->status]);
+}
+
 /* Starts VM execution. */
 int vm_start(vm_state *state)
 {
+    int status;
+
     state->flags.running = 1;
-    return vm_execute(state);
+    status = vm_execute(state);
+
+    if ( status != VM_STATUS_NO_ERROR )
+        vm_crash_report(state);
+
+    return status;
 }
 
 static int vm_initialize_cache(vm_state *vstate)
@@ -312,6 +361,203 @@ static int vm_initialize_cache(vm_state *vstate)
     return 0;
 }
 
+static void vm_initialize_handlers(vm_state *vstate)
+{
+    int i = 0;
+    vm_opcode_handler default_handler = 
+        ({ 
+            void unknown_op_handler(vm_state *state, vm_insn_t insn) {
+                vm_stop(state, VM_STATUS_BAD_INSN); 
+            } &unknown_op_handler;
+        });
+
+    for ( i = 0; i < __NR_VM_OPCODES; i++ )
+        vstate->handlers[i] = default_handler;
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_HALT, {
+        vm_stop(state, VM_STATUS_NO_ERROR);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_NONE, {
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_LDR, {
+        vm_word_t tmp_word; 
+
+        if ( vm_read_word(state, insn.addr, &tmp_word) < 0 )
+        {
+            vm_stop(state, VM_STATUS_MEMORY_FAULT);
+            return;
+        }
+        vm_set_register(state, insn.reg, tmp_word);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_STR, {
+        vm_reg_t reg; 
+
+        reg = vm_get_register(state, insn.reg);
+        if ( vm_write_word(state, insn.addr, reg) < 0 )
+            vm_stop(state, VM_STATUS_MEMORY_FAULT);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_MOV_IMM19, {
+        vm_set_register(state, insn.reg, insn.addr);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_SHL, {
+        vm_reg_t reg;
+        reg = vm_get_register(state, insn.reg);
+        vm_set_register(state, insn.reg, reg << (insn.addr & 63));
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_SHR, {
+        vm_reg_t reg;
+        reg = vm_get_register(state, insn.reg);
+        vm_set_register(state, insn.reg, reg >> (insn.addr & 63));
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_ADD, {
+        vm_reg_t reg; 
+        vm_word_t value;
+
+        reg = vm_get_register(state, insn.reg);
+        if ( vm_read_word(state, insn.addr, &value) < 0 )
+        {
+            vm_stop(state, VM_STATUS_MEMORY_FAULT);
+            return;
+        }
+        vm_set_register(state, insn.reg, reg + value);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_SUB, {
+        vm_reg_t reg; 
+        vm_word_t value;
+
+        reg = vm_get_register(state, insn.reg);
+        if ( vm_read_word(state, insn.addr, &value) < 0 )
+        {
+            vm_stop(state, VM_STATUS_MEMORY_FAULT);
+            return;
+        }
+        vm_set_register(state, insn.reg, reg - value);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_AND, {
+        vm_reg_t reg; 
+        vm_word_t value;
+
+        reg = vm_get_register(state, insn.reg);
+        if ( vm_read_word(state, insn.addr, &value) < 0 )
+        {
+            vm_stop(state, VM_STATUS_MEMORY_FAULT);
+            return;
+        }
+        vm_set_register(state, insn.reg, reg & value);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_OR, {
+        vm_reg_t reg; 
+        vm_word_t value;
+
+        reg = vm_get_register(state, insn.reg);
+        if ( vm_read_word(state, insn.addr, &value) < 0 )
+        {
+            vm_stop(state, VM_STATUS_MEMORY_FAULT);
+            return;
+        }
+        vm_set_register(state, insn.reg, reg | value);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_XOR, {
+        vm_reg_t reg; 
+        vm_word_t value;
+
+        reg = vm_get_register(state, insn.reg);
+        if ( vm_read_word(state, insn.addr, &value) < 0 )
+        {
+            vm_stop(state, VM_STATUS_MEMORY_FAULT);
+            return;
+        }
+        vm_set_register(state, insn.reg, reg ^ value);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_NOT, {
+        vm_reg_t reg; 
+
+        reg = vm_get_register(state, insn.reg);
+        vm_set_register(state, insn.reg, ~reg);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_CMP, {
+        vm_reg_t reg; 
+        vm_word_t value;
+
+        reg = vm_get_register(state, insn.reg);
+        if ( vm_read_word(state, insn.addr, &value) < 0 )
+        {
+            vm_stop(state, VM_STATUS_MEMORY_FAULT);
+            return;
+        }
+
+        state->flags.equal = ( reg == value );
+        state->flags.lower = ( reg < value );
+        state->flags.higher = ( reg > value );
+    });
+    VM_INSTALL_HANDLER(vstate, VM_OP_BR, {
+        vm_set_register(state, 7, insn.addr);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_PRINT, {
+        vm_word_t size;
+        char msg[4096];
+
+        size = vm_get_register(state, 0);
+        if ( size > sizeof(msg) )
+        {
+            vm_stop(state, VM_STATUS_INVALID_ARGUMENT);
+            return;
+        }
+
+        if ( vm_read(state, insn.addr, msg, size) != size )
+        {
+            vm_stop(state, VM_STATUS_MEMORY_FAULT);
+            return;
+        }
+
+        _vm_print(msg, size);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_READLN, {
+        vm_word_t read_size = 0;
+        char line[128];
+        char *current = line;
+
+        while ( read_size < sizeof(line) )
+        {
+            if ( sys_read(0, current, 1) != 1 )
+                break;
+
+            if ( *current == '\n' )
+            {
+                *current = '\0';
+                read_size--;
+                break;
+            }
+
+            current = line + read_size;
+            read_size++;
+        }
+
+        if ( vm_write(state, insn.addr, line, read_size) != read_size )
+        {
+            vm_stop(state, VM_STATUS_MEMORY_FAULT);
+            return;
+        }
+
+        vm_set_register(state, 0, read_size);
+    });
+}
+
 /*
  * Initializes a new virtual machine instance.
  */
@@ -332,6 +578,8 @@ int vm_initialize(vm_memory *data, const size_t vm_size, vm_state **pstate)
     /* Create VM cache. */
     if ( vm_initialize_cache(vstate) < 0 )
         return -1;
+
+    vm_initialize_handlers(vstate);
 
     static uint8_t memory_key[] = "\x0b\xad\xb1\x05\x0b\xad\xb1\x05\x0b\xad\xb1\x05\x0b\xad\xb1\x05";
     static uint8_t memory_iv[] = "\x00\x00\x00\x00\x00\x00\x00\x00";

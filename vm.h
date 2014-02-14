@@ -9,6 +9,27 @@
 #include "chacha.h"
 #include "syscalls.h"
 
+static inline void _memcpy(void *dst, void *src, size_t len)
+{
+    int i;
+    for ( i = 0; i < len; i++ )
+        ((unsigned char *)dst)[i] = ((unsigned char *)src)[i];
+}
+
+static void _vm_print(char *msg, size_t size)
+{
+    sys_write(2, msg, size);
+}
+
+static void __attribute__((noinline)) vm_println (char *msg)
+{
+    size_t length = 0;
+    while ( msg[length] != '\n' )
+        length++;
+
+    _vm_print(msg, length+1);
+}
+
 #ifdef DEBUG
 #define vm_print(...) printf(__VA_ARGS__)
 static void vm_hexdump(const void *addr, size_t size)
@@ -23,10 +44,6 @@ static void vm_hexdump(const void *addr, size_t size)
     printf("\n");
 }
 
-static void __attribute__((noinline)) vm_dbg_print (char *msg, size_t size)
-{
-    sys_write(2, msg, size);
-}
 #define DBG_PRINT(msg) debug_write(msg "\n", sizeof(msg)+1)
 #else
 #define vm_print(...)
@@ -45,6 +62,7 @@ typedef unsigned long vm_page_t;
 typedef unsigned long vm_off_t;
 typedef unsigned long vm_time_t;
 typedef uint64_t vm_reg_t;
+typedef uint64_t vm_word_t;
 
 #define VM_INVALID_ADDR ((vm_addr_t) -1)
 
@@ -76,13 +94,6 @@ static inline  unsigned long shuffle(vm_page_t vpage)
     return (parity(vpage & POLY_SHUFFLER) << 12) ^ (vpage >> 1);
 }
 
-static inline void _memcpy(void *dst, void *src, size_t len)
-{
-    int i;
-    for ( i = 0; i < len; i++ )
-        ((unsigned char *)dst)[i] = ((unsigned char *)src)[i];
-}
-
 #define VM_CACHE_SIZE 32
 #define VM_CACHE_ENTRY(state, data) state->cache_entries[(((void *)data) - state->cache) >> VM_PAGE_SHIFT]
 
@@ -111,10 +122,54 @@ typedef struct {
     } ctx;
 } vm_memory;
 
-typedef struct {
+struct _vm_state;
+
+/* 
+ * VM instruction:
+ *   [ opcode : 8 ], [ reg : 3 ], [ addr : 19 ], [ cond: 2]
+ */
+typedef struct __attribute__((packed)) {
+    unsigned int opcode:8;
+    unsigned int reg:3;
+    unsigned int addr:19;
+    unsigned int cond:2;
+} vm_insn_t;
+
+enum {
+    VM_COND_ALWAYS,
+    VM_COND_IS_EQUAL,
+    VM_COND_IS_LOWER,
+    VM_COND_IS_HIGHER
+} VM_COND;
+
+typedef void (*vm_opcode_handler)(struct _vm_state *, vm_insn_t);
+enum {
+    VM_OP_HALT,
+    VM_OP_NONE,
+    VM_OP_LDR, // Can be used for mov reg, reg
+    VM_OP_STR, // Can be used for mov reg, reg
+    VM_OP_MOV_IMM19,
+    VM_OP_SHL,
+    VM_OP_SHR,
+    VM_OP_ADD,
+    VM_OP_SUB,
+    VM_OP_AND,
+    VM_OP_OR,
+    VM_OP_XOR,
+    VM_OP_NOT,
+    VM_OP_CMP,
+    VM_OP_BR,
+    VM_OP_PRINT,
+    VM_OP_READLN,
+    __NR_VM_OPCODES
+} VM_OPCODE;
+
+typedef struct _vm_state {
     struct {
         unsigned int running:1;
-        unsigned int zero:1;
+        unsigned int lower:1;
+        unsigned int equal:1;
+        unsigned int higher:1;
     } flags;
 
     int status;
@@ -123,14 +178,21 @@ typedef struct {
     vm_memory *vmem;
     vm_cache_entry cache_entries[VM_CACHE_SIZE];
     void *cache;
+    vm_opcode_handler handlers[__NR_VM_OPCODES];
 } vm_state;
+
+#define VM_INSTALL_HANDLER(vstate, opc, code) \
+    vstate->handlers[opc] = ({ void op_handler(vm_state *state, vm_insn_t insn) { \
+        code \
+     }; &op_handler; })
 
 enum {
     VM_STATUS_NO_ERROR = 0,
     VM_STATUS_BAD_IP,
     VM_STATUS_BAD_INSN,
-    VM_STATUS_ACCESS_VIOLATION,
+    VM_STATUS_MEMORY_FAULT,
     VM_STATUS_INTERNAL_ERROR,
+    VM_STATUS_INVALID_ARGUMENT,
 } VM_STATUS;
 
 int vm_initialize(vm_memory *, size_t, vm_state **);

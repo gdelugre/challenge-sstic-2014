@@ -4,8 +4,8 @@ LD=aarch64-linux-gnu-ld
 STRIP=aarch64-linux-gnu-strip
 OBJDUMP=aarch64-linux-gnu-objdump
 QEMU=~/tmp/qemu/aarch64-linux-user/qemu-aarch64
-CFLAGS_RELEASE=-Wall -std=gnu11 -mcpu=generic+nosimd+nofp -O3 -static -nostdlib -nodefaultlibs -ffixed-x28
-CFLAGS_DEBUG=-Wall -std=gnu11 -mcpu=generic+nosimd+nofp -O3 -static -ffixed-x28 -DDEBUG
+CFLAGS_RELEASE=-Wall -std=gnu11 -mcpu=generic+nosimd+nofp -O2 -static -nostdlib -nodefaultlibs -ffixed-x28
+CFLAGS_DEBUG=-Wall -std=gnu11 -mcpu=generic+nosimd+nofp -O2 -static -ffixed-x28 -DDEBUG
 LDFLAGS=-estart
 COMPILE_RELEASE=$(CC) $(CFLAGS_RELEASE) -S
 COMPILE_DEBUG=$(CC) $(CFLAGS_DEBUG)
@@ -25,7 +25,7 @@ release: util
 	done
 	$(LINK) *.o -o $(TARGET)
 	rm -f *.o
-	#$(STRIP) $(TARGET)
+	$(STRIP) $(TARGET)
 
 debug: util
 	ruby make_bytecode.rb
