@@ -3,6 +3,9 @@
 
 #include <syscall.h>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define SYSCALL_DECL(name) static inline long (sys_##name)
 
@@ -150,6 +153,11 @@ SYSCALL_DECL(clock_gettime)(clockid_t clkid, struct timespec *tp)
     return sys_syscall2(__NR_clock_gettime, clkid, (long) tp);
 }
 
+SYSCALL_DECL(open)(const char *pathname, int flags, mode_t mode)
+{
+    return sys_syscall4(__NR_openat, AT_FDCWD, (long) pathname, flags, mode);
+}
+
 SYSCALL_DECL(read)(int fd, void *buf, size_t count)
 {
     return sys_syscall3(__NR_read, fd, (long) buf, count);
@@ -159,5 +167,10 @@ SYSCALL_DECL(write)(int fd, const void *buf, size_t count)
 {
     return sys_syscall3(__NR_write, fd, (long) buf, count);
 } 
+
+SYSCALL_DECL(close)(int fd)
+{
+    return sys_syscall1(__NR_close, fd);
+}
 
 #endif

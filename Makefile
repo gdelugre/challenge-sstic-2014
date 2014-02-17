@@ -36,6 +36,9 @@ dis:
 	$(OBJDUMP) -d $(TARGET) | most
 
 run:
+	$(QEMU) $(TARGET)
+
+test:
 	$(QEMU) -strace $(TARGET)
 
 gdb:

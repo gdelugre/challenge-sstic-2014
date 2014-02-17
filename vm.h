@@ -131,7 +131,13 @@ struct _vm_state;
 typedef struct __attribute__((packed)) {
     unsigned int opcode:8;
     unsigned int reg:3;
-    unsigned int addr:19;
+    //union {
+        unsigned int addr:19;
+      /*  struct {
+            unsigned int base:3;
+            unsigned int offset:16;
+        };
+    };*/
     unsigned int cond:2;
 } vm_insn_t;
 
@@ -146,7 +152,13 @@ typedef void (*vm_opcode_handler)(struct _vm_state *, vm_insn_t);
 enum {
     VM_OP_HALT,
     VM_OP_NONE,
+    VM_OP_LDRB,
+    VM_OP_LDRH,
+    VM_OP_LDRW,
     VM_OP_LDR, // Can be used for mov reg, reg
+    VM_OP_STRB,
+    VM_OP_STRH,
+    VM_OP_STRW,
     VM_OP_STR, // Can be used for mov reg, reg
     VM_OP_MOV_IMM19,
     VM_OP_SHL,
@@ -161,6 +173,8 @@ enum {
     VM_OP_BR,
     VM_OP_PRINT,
     VM_OP_READLN,
+    VM_OP_WRITEFILE,
+    VM_OP_READFILE,
     __NR_VM_OPCODES
 } VM_OPCODE;
 
