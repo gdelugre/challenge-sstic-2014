@@ -12,7 +12,7 @@ COMPILE_DEBUG=$(CC) $(CFLAGS_DEBUG)
 ASSEMBLE=$(AS)
 LINK=$(LD) $(LDFLAGS)
 SRC=main.c chacha.c vm.c
-TARGET=sstic14-armecage
+TARGET=sstic14-armecage.elf
 
 all: debug
 

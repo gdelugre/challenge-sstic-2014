@@ -24,16 +24,32 @@ class CPU::AArch64
                         p "imm = #{imm}", "fake_imm = #{fake_imm}"
                     end
 
-                    p "shift = #{shift}"
-                    p "fake_imm = #{fake_imm.to_s(16)}"
+                    #p "shift = #{shift}"
+                    #p "fake_imm = #{fake_imm.to_s(16)}"
 
-                    InstructionPattern.new(<<-FAKEIMM + <<-ADJUST.lines.shuffle.join($/)).make(map)
+                    InstructionPattern.new(<<-FAKEIMM + <<-ADJUST).make(map)
                         mov ${Rx}, #{fake_imm}
                     FAKEIMM
                         ror ${Rx}, ${Rx}, #{(64 - shift) % 64}
                     ADJUST
                 },
-            ]
+            ],
+
+        InstructionPattern.new("add ${Rx}, ${Rx}, ${Xi}") =>
+            [
+                -> (map) {
+                    return nil if self.is_register?(map['Xi'])
+                    rand_shift = rand(4..1024) & ~0xf
+
+                    InstructionPattern.new(<<-SUB).make(map)
+                        add ${Rx}, ${Rx}, ${Xi} + #{rand_shift}
+                        sub ${Rx}, ${Rx}, #{rand_shift}
+                    SUB
+                }
+            ],
+
+       InstructionPattern.new("ret") => InstructionPattern.new("br x30"),
+       #InstructionPattern.new("br ${Rx}") => InstructionPattern.new("ret ${Rx}"),
     }
 
     def self.zero_register(reg)

@@ -2,13 +2,15 @@ class CPU::AArch64 < CPU
     GENERAL_REGISTERS = 
     {
         64 => (0..30).to_a.map{|i| "x#{i}"},
-        32 => (0..30).to_a.map{|i| "w#{i}"}
+        32 => (0..30).to_a.map{|i| "w#{i}"},
+        0 => [ "xzr", "wzr" ],
     }
 
     REGISTERS = 
     {
         64 => GENERAL_REGISTERS[64] + ['sp', 'cpsr'],
-        32 => GENERAL_REGISTERS[32]
+        32 => GENERAL_REGISTERS[32],
+        0 => GENERAL_REGISTERS[0],
     }
 
     class Vector
@@ -171,6 +173,7 @@ class CPU::AArch64 < CPU
 
     def self.super_register(reg)
         case reg
+        when 'wzr' then 'xzr'
         when /w(\d+)/ then "x#{$1}"
         else reg
         end

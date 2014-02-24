@@ -51,7 +51,11 @@ class CPU
         end
 
         def to_s
-            "\t#{@opcode} #{@operands.join(", ")}"
+            if @operands.empty?
+                "\t#{@opcode}"
+            else
+                "\t#{@opcode} #{@operands.join(", ")}"
+            end
         end
     end
 
@@ -63,8 +67,12 @@ class CPU
         def make(regs = {})
             map = regs.dup
             @patterns.map { |pattern|
-                insn = pattern.gsub(/\${([RI])(\w?)}/) { |token|
+                insn = pattern.gsub(/\${([RIX])(\w?)}/) { |token|
                     case $1
+                    when 'X'
+                        fail "Unspecified argument" if $2.empty? or not map.include?($1+$2)
+                        map[$1+$2]
+
                     when 'I'
                         fail "Unspecified immediate constant" if $2.empty? or not map.include?($1+$2)
                         map[$1+$2]
@@ -86,12 +94,13 @@ class CPU
             %r{^\t#{
                 backrefs = []
                 @patterns[0]
-                    .gsub(/\s+/,"\\s+")                 # expand white characters
-                    .gsub(/\${([RI])(\w?)}/) { |token|   # expand tokens
+                    .gsub(/\s+/,"\\s+")                   # expand white characters
+                    .gsub(/\${([RIX])(\w?)}/) { |token|   # expand tokens
                         if $2.empty?
                             case $1
                             when 'R' then "(#{@cpu.general_registers.join('|')})"
                             when 'I' then "(#?-?\\d+)"
+                            when 'X' then "([^ ]+)"
                             end
                         elsif backrefs.include?($1+$2)
                             "(\\k<#{$1}#{$2}>)"
@@ -100,6 +109,7 @@ class CPU
                             case $1
                             when 'R' then "(?<#{$1}#{$2}>#{@cpu.general_registers.join('|')})"
                             when 'I' then "(?<#{$1}#{$2}>#?-?\\d+)"
+                            when 'X' then "(?<#{$1}#{$2}>[^ ]+)"
                             end
                         end
                     }
