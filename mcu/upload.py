@@ -8,7 +8,7 @@ import binascii, socket, struct
 #   [0000-07FF] - Firmware
 #   [0800-0FFF] - Unmapped
 #   [1000-EFFF] - RAM
-#   [F800-FBFF] - Secret memory area
+#   [F800-FBFF] - Protected memory area
 #   [FC00-FCFF] - HW Registers
 #   [FD00-FFFF] - ROM
 #

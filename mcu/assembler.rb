@@ -42,8 +42,7 @@ def encode_hex(prog)
     lines.join($/)
 end
 
-def compute_labels(lst)
-    base = 0
+def compute_labels(lst, base = 0)
     labels = {}
     lst.lines.map(&:chomp).map(&:strip).each do |line|
         next if line.empty?
@@ -117,6 +116,8 @@ def encode_data(items)
     items.each do |item|
         if item[0] == '"' or item[0] == "'" and item[0] == item[-1]
             data += item[1..-2].gsub('\\\\','\\').gsub('\\"','"').gsub("\\'", "'").gsub("\\n", "\n")
+        elsif LABELS.include?(item)
+            data += LABELS[item].pack('n')
         else
             data += item.hex.chr
         end 
@@ -124,13 +125,13 @@ def encode_data(items)
     data
 end
 
-def assemble(lst)
-    compute_labels(lst)
+def assemble(lst, base = 0)
+    compute_labels(lst, base)
     code = ''.force_encoding('binary')
 
     lst.lines.map(&:chomp).map(&:strip).each do |line|
         next if line.empty? or line[-1] == ?: or line[0] == ?#
-        addr = code.size
+        addr = base + code.size
 
         if line =~ /^.data (.*)/
             items = $1.split(',').map(&:strip)
@@ -154,7 +155,8 @@ end
 
 SECRET_RC4_KEY = "YeahRiscIsGood!"
 
-program = assemble(<<-LISTING)
+kind = ARGV.empty? ? 'fw' : 'rom'
+program = assemble(<<-LISTING) if kind == 'fw'
 ###
 ### SSTIC 2014, remote firmware
 ### 
@@ -169,10 +171,13 @@ mov r1, 0xF800
 mov r2, 0x400
 call rc4_decrypt
 
-mov r0, 0xF800
+mov r0, goodbye_str
 call print
 
-mov r0, goodbye_str
+xor r0, r0, r0
+jz end
+
+mov r0, 0xF800
 call print
 
 end:
@@ -317,9 +322,40 @@ secret_key:
 
 goodbye_str:
     .data "Firmware successfully uploaded.\\n",0
-
 LISTING
 
-puts hex = encode_hex(program)
-File.binwrite('fw.hex', hex)
+program = assemble(<<-LISTING, 0xFD00) if kind == 'rom'
+#
+# ROM code. Base is 0xFD00.
+#
+
+and r0, r0, r0
+jz boot
+
+boot:
+    xor r0, r0, r0
+    mov r1, r0
+    mov r2, r0
+    mov r3, r0
+    mov r4, r0
+    mov r5, r0
+    mov r6, r0
+    mov r7, r0
+    mov r8, r0
+    mov r9, r0
+    mov r10, r0
+    mov r11, r0
+    mov r12, r0
+    mov r13, 0xEFFE 
+    mov r14, r0
+    xor r15, r15, r15
+    ret r15
+LISTING
+
+if kind == 'fw'
+    puts hex = encode_hex(program)
+    File.binwrite("fw.hex", hex)
+else
+    File.binwrite("rom.bin", program)
+end
 

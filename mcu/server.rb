@@ -17,6 +17,8 @@ class Emulator
         NS = 3
     end
 
+    ROM = File.binread('rom.bin').bytes
+    ROM_REGION = (0xFD00 .. 0xFFFF)
     RC4_SECRET_KEY = "YeahRiscIsGood!"
     rc4 = OpenSSL::Cipher::RC4.new.encrypt
     rc4.key_len = RC4_SECRET_KEY.length
@@ -81,7 +83,7 @@ Write an e-mail at this address to prove you just finished this challenge:
         load_firmware
 
         @registers = Array.new(16, 0x0000)
-        @pc = 0x0000
+        @pc = ROM_REGION.begin
         @fault_addr = 0x0000
         @flags = { z:0, s:0 }
         @cpu_halted = false
@@ -119,7 +121,6 @@ Write an e-mail at this address to prove you just finished this challenge:
     end
 
     def memory_write(addr, value)
-        puts "Writing #{value[0].to_s 16} at #{addr.to_s 16}" unless addr == 0xfc00
         size = value.size
         if UNMAPPED_REGION.include?(addr) or UNMAPPED_REGION.include?(addr+size) or (addr < UNMAPPED_REGION.begin and addr+size > UNMAPPED_REGION.end)
             @fault_addr = addr
@@ -163,10 +164,6 @@ Write an e-mail at this address to prove you just finished this challenge:
         when 'mov.lo', 'mov.hi'
             args.push(insn[0] & 0xf) # destination register
             args.push(insn[1])       # 8 bit immediate
-
-        #when 'cmp'
-        #    args.push(insn[1] >> 4)  # source register 1
-        #    args.push(insn[1] & 0xf) # source register 2
 
         when 'xor', 'or', 'and', 'add', 'sub', 'mul', 'div'
             args.push(insn[0] & 0xf)  # destination register
@@ -285,7 +282,8 @@ Write an e-mail at this address to prove you just finished this challenge:
 
         @memory = Array.new(MEMORY_SIZE, 0)
         @memory[PROTECTED_MEMORY_REGION] = PROTECTED_MEMORY
-        @memory[0, fw_data.size] = fw_data.unpack('C*')
+        @memory[ROM_REGION.begin, ROM.size] = ROM
+        @memory[0, fw_data.size] = fw_data.bytes
     end
 
     def load_raw_firmware
