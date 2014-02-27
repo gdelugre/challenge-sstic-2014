@@ -27,9 +27,14 @@ CONDITIONS = [ 'z', 'nz', 's', 'ns' ]
 LABELS = {}
 
 def encode_hex(prog)
-    lines = Array.new((prog.size + 31) / 32) { |n|
-        data = prog[n * 32, 32]
-        ':%02X%04X00%s%02X' % [ data.size, n * 32, data.unpack('H*')[0].upcase, -data.bytes.inject(0){|a,b| a+b} & 0xff ]
+    line_size = 16
+    lines = Array.new((prog.size + line_size - 1) / line_size) { |n|
+        data = prog[n * line_size, line_size]
+
+        line = '%02X%04X00%s' % [ data.size, n * line_size, data.unpack('H*')[0].upcase ]
+        cksum = -[line].pack('H*').bytes.inject(0, &:+) & 0xff
+
+        ":#{line}%02X" % cksum
     } + [ ':00000001FF' ]
 
     lines.join($/)
@@ -139,11 +144,11 @@ program = assemble(<<-LISTING)
 # SSTIC 2014, remote firmware
 xor r0, r0, r0
 mov r4, goodbye_str
-mov r8, 0xC400
+mov r8, 0xFC00
 
 xor r1, r1, r1
 mov r2, 1
-mov r3, #{"Firmware successfully uploaded.\\n".size}
+mov r3, #{"Firmware successfully uploaded.\\n\\n".size}
 
 print_loop:
     sub r15, r3, r1
@@ -155,13 +160,16 @@ print_loop:
     jmp print_loop
 
 end:
-    .data 0,0
+    mov r1, 0xFC10
+    mov r2, 1
+    str r2, r1, r0
     jmp end
 
 goodbye_str:
-    .data "Firmware successfully uploaded.\\n"
+    .data "Firmware successfully uploaded.\\n\\n",0
 
 LISTING
 
-puts encode_hex(program)
-File.binwrite('fw.bin', program)
+puts hex = encode_hex(program)
+File.binwrite('fw.hex', hex)
+

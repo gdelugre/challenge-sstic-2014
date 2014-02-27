@@ -23,7 +23,8 @@ class Emulator
     MAX_FIRMWARE_SIZE = 0x800
     MEMORY_SIZE = 1 << 16
     UNMAPPED_REGION = (0x800 ... 0xC00)
-    UART_TX = 0xC400
+    UART_TX_REGISTER = 0xFC00
+    HALT_CPU_REGISTER = 0xFC10
     EXCEPTION_MESSAGES = 
     {
         bad_insn: "Invalid instruction",
@@ -37,6 +38,7 @@ class Emulator
 
     attr_reader :client
     def initialize(client)
+        @firmware_format = :hex
         @creation_time = Time.now
         @client = client
         @@instances.push(self)
@@ -70,10 +72,11 @@ class Emulator
         @pc = 0x0000
         @fault_addr = 0x0000
         @flags = { z:0, s:0 }
+        @cpu_halted = false
 
         Timeout.timeout(MAX_EXECUTION_TIME) {
             begin
-                loop do
+                while not @cpu_halted do
                     opcode, args = parse_instruction(@pc)
                     @pc = execute_insn(opcode, args)
                 end
@@ -108,9 +111,11 @@ class Emulator
         if UNMAPPED_REGION.include?(addr) or UNMAPPED_REGION.include?(addr+size) or (addr < UNMAPPED_REGION.begin and addr+size > UNMAPPED_REGION.end)
             @fault_addr = addr
             exception(:access_violation)
-        elsif addr == UART_TX and value.size == 1
+        elsif addr == UART_TX_REGISTER and value.size == 1
             @client.print(value[0].chr)
             @client.flush
+        elsif addr == HALT_CPU_REGISTER and value.size == 1 and value[0] & 1 != 0
+            @cpu_halted = true
         end
 
         @memory[addr, size] = value
@@ -246,25 +251,64 @@ class Emulator
     end
 
     def load_firmware
+        fw_data = ''
         Timeout.timeout(MAX_LOADING_TIME) do
-            fw_size = @client.read(2)
-            fail("invalid packet size") if fw_size.length != 2
-
-            crc = @client.read(4)
-            fail("invalid checksum") if crc.length != 4
-            
-            fw_size = fw_size.unpack('n')[0]
-            fail("invalid firmware size") if fw_size.zero? or fw_size > MAX_FIRMWARE_SIZE
-
-            fw_data = @client.read(fw_size)
-            fail("not enough data") if fw_data.length != fw_size
-
-            fail("checksum verification failed") if Zlib.crc32(fw_data) != crc.unpack('N')[0]
-
-            @memory = Array.new(MEMORY_SIZE, 0)
-            @memory[EMAIL_MEM_ADDR, EMAIL_SECRET.size] = EMAIL_SECRET
-            @memory[0, fw_size] = fw_data.unpack('C*')
+            fw_data =
+                case @firmware_format
+                when :raw
+                    load_raw_firmware
+                when :hex
+                    load_hex_firmware 
+                end
         end
+
+        @memory = Array.new(MEMORY_SIZE, 0)
+        @memory[EMAIL_MEM_ADDR, EMAIL_SECRET.size] = EMAIL_SECRET
+        @memory[0, fw_data.size] = fw_data.unpack('C*')
+    end
+
+    def load_raw_firmware
+        fw_size = @client.read(2)
+        fail("invalid packet size") if fw_size.length != 2
+
+        crc = @client.read(4)
+        fail("invalid checksum") if crc.length != 4
+        
+        fw_size = fw_size.unpack('n')[0]
+        fail("invalid firmware size") if fw_size.zero? or fw_size > MAX_FIRMWARE_SIZE
+
+        fw_data = @client.read(fw_size)
+        fail("not enough data") if fw_data.length != fw_size
+
+        fail("bad checksum") if Zlib.crc32(fw_data) != crc.unpack('N')[0]
+        fw_data
+    end
+
+    def load_hex_firmware
+        eof = false
+        fw_data = []
+
+        until eof
+            fail("invalid line") if (start = @client.read(1)).size != 1 or start != ?:
+            hdr = @client.read(8)
+            fail("invalid line") unless hdr.upcase =~ /^([0-9A-F]{2})([0-9A-F]{4})([0-9A-F]{2})$/
+
+            count, addr, type = $~.captures.map(&:hex) 
+            fail("invalid firmware address") if addr + count > MAX_FIRMWARE_SIZE
+            fail("invalid record type") if not (0..1).include?(type)
+            eof = (type == 1)
+
+            data = @client.read((count + 1) * 2 + (eof ? 0 : 1))
+            fail("invalid line") unless data.upcase =~ /^([0-9A-F]{#{count*2}})([0-9A-F]{2})/
+
+            block = [ $1 ].pack('H*').bytes
+            cksum = $2.hex
+
+            fail("bad checksum") if -([hdr].pack('H*').bytes + block).inject(0,&:+) & 0xff != cksum
+            fw_data[addr, block.size] = block
+        end
+
+        fw_data.map(&:to_i).pack('C*')
     end
 
     def crash_report(exception)
@@ -273,7 +317,6 @@ class Emulator
     end
     
     def dump_registers
-    begin
         @client.puts <<-REGS
    r0:#{"%04X" % @registers[0]}     r1:#{"%04X" % @registers[1]}    r2:#{"%04X" % @registers[2]}    r3:#{"%04X" % @registers[3]}
    r4:#{"%04X" % @registers[4]}     r5:#{"%04X" % @registers[5]}    r6:#{"%04X" % @registers[6]}    r7:#{"%04X" % @registers[7]}
@@ -281,9 +324,6 @@ class Emulator
   r12:#{"%04X" % @registers[12]}    r13:#{"%04X" % @registers[13]}   r14:#{"%04X" % @registers[14]}   r15:#{"%04X" % @registers[15]}
    pc:#{"%04X" % @pc} fault_addr:#{"%04X" % @fault_addr} [S:#{@flags[:s]} Z:#{@flags[:z]}]
         REGS
-    rescue Exception => e
-        p e.message
-    end
     end
 end
 

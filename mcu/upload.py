@@ -2,11 +2,7 @@
 
 import binascii, socket, struct
 
-#FIRMWARE = b"\x00" * 512
-
-fd = open('fw.bin', 'rb')
-FIRMWARE = fd.read()
-fd.close()
+FIRMWARE = "fw.hex"
 
 print("---------------------------------------------")
 print("----- Microcontroller firmware uploader -----")
@@ -18,15 +14,18 @@ s.connect(('127.0.0.1', 20000))
 
 print(":: Serial port connected.")
 print(":: Uploading firmware... ", end='')
-s.send(struct.pack(">H", len(FIRMWARE)))
-s.send(struct.pack(">I", binascii.crc32(FIRMWARE) & 0xffffffff))
-s.send(FIRMWARE)
+
+[ s.send(line) for line in open(FIRMWARE, 'rb') ]
+
 print("done.")
 print()
 
 resp = b''
-while 1:
-    c = s.recv(1)
+while True:
+    try:
+        c = s.recv(1)
+    except:
+        break
     if not c:
         break
     if len(c) > 0:
