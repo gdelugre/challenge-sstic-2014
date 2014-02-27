@@ -3,9 +3,9 @@
 require 'socket'
 require 'timeout'
 require 'zlib'
+require 'openssl'
 
-EMAIL_SECRET = File.read("email.secret").unpack('C*')
-EMAIL_MEM_ADDR = 0xFA00
+EMAIL_SECRET = "fufufufufu@challenge.sstic.org"
 
 class Emulator
     class EmulatorException < Exception; end
@@ -17,12 +17,24 @@ class Emulator
         NS = 3
     end
 
+    RC4_SECRET_KEY = "YeahRiscIsGood!"
+    rc4 = OpenSSL::Cipher::RC4.new.encrypt
+    rc4.key_len = RC4_SECRET_KEY.length
+    rc4.key = RC4_SECRET_KEY
+
+    PROTECTED_MEMORY_REGION = (0xF800...0xFC00)
+    PROTECTED_MEMORY = (rc4.update(<<-PROTECTED.ljust(PROTECTED_MEMORY_REGION.size, "\x00")) + rc4.final).bytes
+Congratulations !
+Write an e-mail at this address to prove you just finished this challenge:
+    #{EMAIL_SECRET}
+    PROTECTED
+
     MAX_CLIENT_BY_ADDR = 2
     MAX_LOADING_TIME = 15
     MAX_EXECUTION_TIME = 5
     MAX_FIRMWARE_SIZE = 0x800
     MEMORY_SIZE = 1 << 16
-    UNMAPPED_REGION = (0x800 ... 0xC00)
+    UNMAPPED_REGION = (0x800 ... 0x1000)
     UART_TX_REGISTER = 0xFC00
     HALT_CPU_REGISTER = 0xFC10
     EXCEPTION_MESSAGES = 
@@ -107,6 +119,7 @@ class Emulator
     end
 
     def memory_write(addr, value)
+        puts "Writing #{value[0].to_s 16} at #{addr.to_s 16}" unless addr == 0xfc00
         size = value.size
         if UNMAPPED_REGION.include?(addr) or UNMAPPED_REGION.include?(addr+size) or (addr < UNMAPPED_REGION.begin and addr+size > UNMAPPED_REGION.end)
             @fault_addr = addr
@@ -130,19 +143,19 @@ class Emulator
             case insn[0] >> 4
             when 1 then 'mov.lo'
             when 2 then 'mov.hi'
-            #when 3 then 'cmp'
-            when 4 then 'xor'
-            when 5 then 'or'
-            when 6 then 'and'
-            when 7 then 'add'
-            when 8 then 'sub'
-            when 9 then 'mul'
-            when 10 then 'div'
-            when 11 then 'jcc'
-            when 12 then 'jmp'
-            when 13 then 'ldr'
-            when 14 then 'str'
-            when 15 then exception(:bkpt)
+            when 3 then 'xor'
+            when 4 then 'or'
+            when 5 then 'and'
+            when 6 then 'add'
+            when 7 then 'sub'
+            when 8 then 'mul'
+            when 9 then 'div'
+            when 10 then 'jcc'
+            when 11 then 'jmp'
+            when 12 then 'call'
+            when 13 then 'ret'
+            when 14 then 'ldr'
+            when 15 then 'str'
                 else exception(:bad_insn)
             end
 
@@ -167,11 +180,14 @@ class Emulator
                 args[-1] |= 0xfc00 # sign extend
             end
 
-        when 'jmp'
+        when 'jmp', 'call'
             args.push(((insn[0] & 3) << 8) | insn[1]) # destination offset: 10 bits
             if args.last[9] == 1
                 args[-1] |= 0xfc00 # sign extend
             end
+
+        when 'ret'
+            args.push(insn[1] & 0xf)
 
         when 'ldr', 'str'
             args.push(insn[0] & 0xf) # register
@@ -196,6 +212,11 @@ class Emulator
         case opcode
             when 'jmp'
                 return (@pc + args[0]) & 0xffff
+            when 'call'
+                @registers[15] = (@pc + 2) & 0xffff
+                return (@pc + args[0]) & 0xffff
+            when 'ret'
+                return @registers[args[0]]
             when 'jcc'
                 return (check_condition(args[0]) ? (@pc + args[1]) : (@pc + 2)) & 0xffff
 
@@ -263,7 +284,7 @@ class Emulator
         end
 
         @memory = Array.new(MEMORY_SIZE, 0)
-        @memory[EMAIL_MEM_ADDR, EMAIL_SECRET.size] = EMAIL_SECRET
+        @memory[PROTECTED_MEMORY_REGION] = PROTECTED_MEMORY
         @memory[0, fw_data.size] = fw_data.unpack('C*')
     end
 

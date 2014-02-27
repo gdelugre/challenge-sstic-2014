@@ -2,6 +2,17 @@
 
 import binascii, socket, struct
 
+#
+# MEMORY MAP:
+#
+#   [0000-07FF] - Firmware
+#   [0800-0FFF] - Unmapped
+#   [1000-EFFF] - RAM
+#   [F800-FBFF] - Secret memory area
+#   [FC00-FCFF] - HW Registers
+#   [FD00-FFFF] - ROM
+#
+
 FIRMWARE = "fw.hex"
 
 print("---------------------------------------------")

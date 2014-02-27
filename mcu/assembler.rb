@@ -4,20 +4,22 @@ OPCODES =
 {
     'mov.lo' => 1,
     'mov.hi' => 2,
-    'xor' => 4,
-    'or' => 5,
-    'and' => 6,
-    'add' => 7,
-    'sub' => 8,
-    'mul' => 9,
-    'div' => 10,
-    'jz' => 11,
-    'jnz' => 11,
-    'js' => 11,
-    'jns' => 11,
-    'jmp' => 12,
-    'ldr' => 13,
-    'str' => 14,
+    'xor' => 3,
+    'or' => 4,
+    'and' => 5,
+    'add' => 6,
+    'sub' => 7,
+    'mul' => 8,
+    'div' => 9,
+    'jz' => 10,
+    'jnz' => 10,
+    'js' => 10,
+    'jns' => 10,
+    'jmp' => 11,
+    'call' => 12,
+    'ret' => 13,
+    'ldr' => 14,
+    'str' => 15,
 }
 
 META = %w{ mov }
@@ -54,8 +56,12 @@ def compute_labels(lst)
             data = encode_data(items)
             data += "\x00" if data.size % 2 == 1 # preserve alignment
             base += data.size
-        elsif line =~ /^mov / # meta instruction
-            base += 4
+        elsif line =~ /^mov (.*)/ # meta instruction
+            if REGISTERS.include?($1.split(',').map(&:strip).last)
+                base += 2
+            else
+                base += 4
+            end
         else
             base += 2
         end
@@ -66,7 +72,7 @@ end
 
 def reg(arg); REGISTERS.index(arg) & 0xf end
 def cond(arg); CONDITIONS.index(arg) & 3 end
-def addr(label); LABELS[label] end
+def addr(label); LABELS[label] or fail("Bad label #{label.inspect}") end
 
 def encode_insn(pc, opcode, *args)
     fail "Unknown instruction: #{opcode.inspect}"unless OPCODES.include?(opcode) or META.include?(opcode)
@@ -74,9 +80,13 @@ def encode_insn(pc, opcode, *args)
     insn = (OPCODES[opcode] << 12) if OPCODES.include?(opcode)
     case opcode
         when 'mov' # meta
-            value = LABELS[args[1]] || args[1].hex
-            return encode_insn(pc, "mov.hi", args[0], ((value >> 8) & 0xff).to_s(16)) + 
-                   encode_insn(pc+2, "mov.lo", args[0], ((value & 0xff).to_s(16)))
+            if REGISTERS.include?(args[1])
+                return encode_insn(pc, "and", args[0], args[1], args[1])
+            else
+                value = LABELS[args[1]] || args[1].hex
+                return encode_insn(pc, "mov.hi", args[0], ((value >> 8) & 0xff).to_s(16)) + 
+                       encode_insn(pc+2, "mov.lo", args[0], ((value & 0xff).to_s(16)))
+            end
 
         when 'mov.lo', 'mov.hi'
             insn |= (reg(args[0]) << 8)
@@ -88,8 +98,10 @@ def encode_insn(pc, opcode, *args)
         when /j(s|z|ns|nz)/
             insn |= cond($1) << 10
             insn |= (addr(args[0]) - pc) & 1023
-        when /jmp/
+        when 'jmp', 'call'
             insn |= (addr(args[0]) - pc) & 1023
+        when 'ret'
+            insn |= reg(args[0])
         when 'ldr', 'str'
             insn |= reg(args[0]) << 8
             insn |= reg(args[1]) << 4
@@ -140,33 +152,144 @@ def assemble(lst)
     code
 end
 
-program = assemble(<<-LISTING)
-# SSTIC 2014, remote firmware
-xor r0, r0, r0
-mov r4, goodbye_str
-mov r8, 0xFC00
+SECRET_RC4_KEY = "YeahRiscIsGood!"
 
+program = assemble(<<-LISTING)
+###
+### SSTIC 2014, remote firmware
+### 
+
+xor r0, r0, r0
+
+#
+# RC4 implementation
+#
+mov r8, 0x1000
+mov r9, 0x100
 xor r1, r1, r1
 mov r2, 1
-mov r3, #{"Firmware successfully uploaded.\\n\\n".size}
 
-print_loop:
-    sub r15, r3, r1
-    jz end
-    js end
-    ldr r15, r4, r1
-    str r15, r8, r0
+rc4_init_state:
+    sub r15, r9, r1
+    jz rc4_init_state_done
+    str r1, r8, r1
     add r1, r1, r2
-    jmp print_loop
+    jmp rc4_init_state
+rc4_init_state_done:
+
+xor r1, r1, r1
+mov r2, r1
+mov r9, 0xff
+mov r10, secret_key
+mov r11, #{SECRET_RC4_KEY.size.to_s(16)}
+mov r4, 1
+
+rc4_init_state2:
+    # j += S[i]
+    ldr r5, r8, r1
+    add r2, r2, r5
+
+    # i - (i / len(secret)) * len(secret)
+    div r5, r1, r11
+    mul r5, r5, r11
+    sub r5, r1, r5
+
+    # j += secret[i % len(secret)] & 0xff
+    ldr r5, r10, r5
+    add r2, r2, r5
+    and r2, r2, r9
+
+    # S[i] <=> S[j]
+    ldr r3, r8, r1
+    ldr r5, r8, r2
+    str r5, r8, r1
+    str r3, r8, r2
+
+    # i++
+    add r1, r1, r4 
+    sub r15, r9, r1
+jns rc4_init_state2
+
+xor r1, r1, r1
+mov r2, r1
+mov r3, r1
+mov r9, 0x400
+mov r10, 0xF800
+mov r11, 0xff
+mov r4, 1
+
+rc4_cipher_loop:
+    # i = (i + 1) mod 256
+    add r1, r3, r4
+    and r1, r1, r11
+
+    # j = (j + S[i]) mod 256
+    ldr r5, r8, r1
+    add r2, r2, r5
+    and r2, r2, r11
+    
+    # S[i] <=> S[j]
+    ldr r5, r8, r1
+    ldr r6, r8, r2
+    str r6, r8, r1
+    str r5, r8, r2
+
+    # S[S[i] + S[j] mod 256]
+    add r5, r5, r6
+    and r5, r5, r11
+    ldr r5, r8, r5
+
+    # XOR with keystream
+    ldr r6, r10, r3
+    xor r6, r6, r5
+    str r6, r10, r3
+
+    add r3, r3, r4
+    sub r15, r9, r3
+jnz rc4_cipher_loop
+
+mov r0, 0xF800
+call print
+
+mov r0, goodbye_str
+call print
 
 end:
+    xor r0, r0, r0
     mov r1, 0xFC10
     mov r2, 1
     str r2, r1, r0
     jmp end
 
+#
+# print(char *);
+#
+print:
+    mov r14, r0
+    mov r13, 0xFC00
+    xor r8, r8, r8
+    mov r9, r8
+    mov r10, 1
+    xor r11, r11, r11
+
+    print_loop: 
+        ldr r9, r14, r8
+        and r9, r9, r9
+        jz print_ret
+        str r9, r13, r11
+        add r8, r8, r10
+        jmp print_loop
+    print_ret:
+    ret r15
+
+# arg0: state, arg1: key, arg2: keylen
+#rc4_initialize:
+
+secret_key:
+    .data #{SECRET_RC4_KEY.inspect}, 0
+
 goodbye_str:
-    .data "Firmware successfully uploaded.\\n\\n",0
+    .data "Firmware successfully uploaded.\\n",0
 
 LISTING
 
