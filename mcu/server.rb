@@ -23,6 +23,7 @@ class Emulator
     MAX_FIRMWARE_SIZE = 0x800
     MEMORY_SIZE = 1 << 16
     UNMAPPED_REGION = (0x800 ... 0xC00)
+    UART_TX = 0xC400
     EXCEPTION_MESSAGES = 
     {
         bad_insn: "Invalid instruction",
@@ -39,6 +40,7 @@ class Emulator
         @creation_time = Time.now
         @client = client
         @@instances.push(self)
+        STDERR.puts "New client from #{self.remote_ip}" if $DEBUG
     end
 
     def self.instances
@@ -54,6 +56,7 @@ class Emulator
     end
 
     def kill(reason = '')
+        STDERR.puts "Closing connection with #{self.remote_ip}" if $DEBUG and not @client.closed?
         @client.puts "CLOSING: #{reason}." unless reason.empty? or @client.closed?
         @client.close unless @client.closed?
         @@instances.delete(self)
@@ -105,6 +108,9 @@ class Emulator
         if UNMAPPED_REGION.include?(addr) or UNMAPPED_REGION.include?(addr+size) or (addr < UNMAPPED_REGION.begin and addr+size > UNMAPPED_REGION.end)
             @fault_addr = addr
             exception(:access_violation)
+        elsif addr == UART_TX and value.size == 1
+            @client.print(value[0].chr)
+            @client.flush
         end
 
         @memory[addr, size] = value
@@ -151,10 +157,16 @@ class Emulator
 
         when 'jcc'
             args.push((insn[0] >> 2) & 3)              # condition: 2 bits
-            args.push(((insn[0] & 3) << 10) | insn[1]) # destination offset: 10 bits
+            args.push(((insn[0] & 3) << 8) | insn[1]) # destination offset: 10 bits
+            if args.last[9] == 1
+                args[-1] |= 0xfc00 # sign extend
+            end
 
         when 'jmp'
-            args.push(((insn[0] & 3) << 10) | insn[1]) # destination offset: 10 bits
+            args.push(((insn[0] & 3) << 8) | insn[1]) # destination offset: 10 bits
+            if args.last[9] == 1
+                args[-1] |= 0xfc00 # sign extend
+            end
 
         when 'ldr', 'str'
             args.push(insn[0] & 0xf) # register
@@ -175,11 +187,12 @@ class Emulator
     end
 
     def execute_insn(opcode, args)
+        STDERR.puts "Executing #{opcode} #{args.join(', ')}" if $DEBUG
         case opcode
             when 'jmp'
                 return (@pc + args[0]) & 0xffff
             when 'jcc'
-                return (check_condition(args[0]) ? (@pc + args[1]) : (@pc + 2))
+                return (check_condition(args[0]) ? (@pc + args[1]) : (@pc + 2)) & 0xffff
 
             when 'mov.lo'
                 @registers[args[0]] &= 0xff00
@@ -218,13 +231,13 @@ class Emulator
                 @registers[args[0]] |= byte
             when 'str'
                 byte = @registers[args[0]] & 0x00ff
-                memory_write(@registers[args[1] + args[2]], [ byte ])
+                memory_write(@registers[args[1]] + @registers[args[2]], [ byte ])
 
             when 'bkpt'
                 exception(:bkpt)
         end
 
-        @pc + 2
+        (@pc + 2) & 0xffff
     end
 
     def update_flags(result)
@@ -260,6 +273,7 @@ class Emulator
     end
     
     def dump_registers
+    begin
         @client.puts <<-REGS
    r0:#{"%04X" % @registers[0]}     r1:#{"%04X" % @registers[1]}    r2:#{"%04X" % @registers[2]}    r3:#{"%04X" % @registers[3]}
    r4:#{"%04X" % @registers[4]}     r5:#{"%04X" % @registers[5]}    r6:#{"%04X" % @registers[6]}    r7:#{"%04X" % @registers[7]}
@@ -267,6 +281,9 @@ class Emulator
   r12:#{"%04X" % @registers[12]}    r13:#{"%04X" % @registers[13]}   r14:#{"%04X" % @registers[14]}   r15:#{"%04X" % @registers[15]}
    pc:#{"%04X" % @pc} fault_addr:#{"%04X" % @fault_addr} [S:#{@flags[:s]} Z:#{@flags[:z]}]
         REGS
+    rescue Exception => e
+        p e.message
+    end
     end
 end
 
