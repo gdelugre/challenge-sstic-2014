@@ -252,7 +252,7 @@ Write an e-mail at this address to prove you just finished this challenge:
                 update_flags(@registers[args[0]])
 
             when 'ldr'
-                byte = memory_read(@registers[args[1]] + @registers[args[2]], 1)[0]
+                byte = memory_read((@registers[args[1]] + @registers[args[2]]) & 0xffff, 1)[0]
                 @registers[args[0]] &= 0xff00
                 @registers[args[0]] |= byte
             when 'str'

@@ -49,7 +49,7 @@ def compute_labels(lst)
         next if line.empty?
         next if line[0] == ?#
 
-        if line =~ /(\w+):$/
+        if line =~ /([[:graph:]]+):$/
             labels[$1] = base 
         elsif line =~ /^.data (.*)/
             items = $1.split(',').map(&:strip)
@@ -159,94 +159,15 @@ program = assemble(<<-LISTING)
 ### SSTIC 2014, remote firmware
 ### 
 
-xor r0, r0, r0
+mov r0, 0x1000
+mov r1, secret_key
+mov r2, #{SECRET_RC4_KEY.size.to_s(16)}
+call rc4_initialize
 
-#
-# RC4 implementation
-#
-mov r8, 0x1000
-mov r9, 0x100
-xor r1, r1, r1
-mov r2, 1
-
-rc4_init_state:
-    sub r15, r9, r1
-    jz rc4_init_state_done
-    str r1, r8, r1
-    add r1, r1, r2
-    jmp rc4_init_state
-rc4_init_state_done:
-
-xor r1, r1, r1
-mov r2, r1
-mov r9, 0xff
-mov r10, secret_key
-mov r11, #{SECRET_RC4_KEY.size.to_s(16)}
-mov r4, 1
-
-rc4_init_state2:
-    # j += S[i]
-    ldr r5, r8, r1
-    add r2, r2, r5
-
-    # i - (i / len(secret)) * len(secret)
-    div r5, r1, r11
-    mul r5, r5, r11
-    sub r5, r1, r5
-
-    # j += secret[i % len(secret)] & 0xff
-    ldr r5, r10, r5
-    add r2, r2, r5
-    and r2, r2, r9
-
-    # S[i] <=> S[j]
-    ldr r3, r8, r1
-    ldr r5, r8, r2
-    str r5, r8, r1
-    str r3, r8, r2
-
-    # i++
-    add r1, r1, r4 
-    sub r15, r9, r1
-jns rc4_init_state2
-
-xor r1, r1, r1
-mov r2, r1
-mov r3, r1
-mov r9, 0x400
-mov r10, 0xF800
-mov r11, 0xff
-mov r4, 1
-
-rc4_cipher_loop:
-    # i = (i + 1) mod 256
-    add r1, r3, r4
-    and r1, r1, r11
-
-    # j = (j + S[i]) mod 256
-    ldr r5, r8, r1
-    add r2, r2, r5
-    and r2, r2, r11
-    
-    # S[i] <=> S[j]
-    ldr r5, r8, r1
-    ldr r6, r8, r2
-    str r6, r8, r1
-    str r5, r8, r2
-
-    # S[S[i] + S[j] mod 256]
-    add r5, r5, r6
-    and r5, r5, r11
-    ldr r5, r8, r5
-
-    # XOR with keystream
-    ldr r6, r10, r3
-    xor r6, r6, r5
-    str r6, r10, r3
-
-    add r3, r3, r4
-    sub r15, r9, r3
-jnz rc4_cipher_loop
+mov r0, 0x1000
+mov r1, 0xF800
+mov r2, 0x400
+call rc4_decrypt
 
 mov r0, 0xF800
 call print
@@ -260,6 +181,115 @@ end:
     mov r2, 1
     str r2, r1, r0
     jmp end
+
+#
+# rc4_initialize(void *state, char *key, int keylen);
+#
+rc4_initialize:
+    mov r8, r0
+    mov r9, r1
+    mov r10, r2
+
+    xor r0, r0, r0
+    mov r1, 0x100
+    mov r2, 1 
+
+    .rc4_fill_state:
+        sub r3, r1, r0
+        jz .rc4_fill_state_done
+        str r0, r8, r0
+        add r0, r0, r2
+        jmp .rc4_fill_state
+    .rc4_fill_state_done:
+
+    xor r0, r0, r0
+    mov r1, r0
+    mov r2, 1
+    mov r3, 0xff
+
+    .rc4_init_state:
+        # j += S[i]
+        ldr r4, r8, r0
+        add r1, r1, r4
+
+        # i - (i / len(secret)) * len(secret)
+        div r4, r0, r10
+        mul r4, r4, r10
+        sub r4, r0, r4
+
+        # j += secret[i % len(secret)] & 0xff
+        ldr r4, r9, r4
+        add r1, r1, r4
+        and r1, r1, r3
+
+        # S[i] <=> S[j]
+        ldr r4, r8, r0
+        ldr r5, r8, r1
+        str r5, r8, r0
+        str r4, r8, r1
+
+        # i++
+        add r0, r0, r2
+        sub r4, r3, r0
+    jns .rc4_init_state
+    ret r15
+
+#
+# rc4_encrypt(void *state, void *buffer, int size);
+#
+rc4_encrypt:
+    jmp rc4_cipher
+
+#
+# rc4_decrypt(void *state, void *buffer, int size);
+#
+rc4_decrypt:
+    jmp rc4_cipher
+
+#
+# rc4_cipher(void *state, void *buffer, int size);
+#
+rc4_cipher:
+    mov r8, r0
+    mov r9, r1
+    mov r10, r2
+
+    xor r0, r0, r0
+    mov r1, r0
+    mov r2, r0
+    mov r3, 0xff
+    mov r4, 1
+
+    .rc4_cipher_loop:
+        # i = (i + 1) mod 256
+        add r0, r2, r4
+        and r0, r0, r3
+
+        # j = (j + S[i]) mod 256
+        ldr r5, r8, r0
+        add r1, r1, r5
+        and r1, r1, r3
+        
+        # S[i] <=> S[j]
+        ldr r5, r8, r0
+        ldr r6, r8, r1
+        str r6, r8, r0
+        str r5, r8, r1
+
+        # S[S[i] + S[j] mod 256]
+        add r5, r5, r6
+        and r5, r5, r3
+        ldr r5, r8, r5
+
+        # XOR with keystream
+        ldr r6, r9, r2
+        xor r6, r6, r5
+        str r6, r9, r2
+
+        add r2, r2, r4
+        sub r5, r10, r2
+    jnz .rc4_cipher_loop
+    ret r15 
 
 #
 # print(char *);
@@ -281,9 +311,6 @@ print:
         jmp print_loop
     print_ret:
     ret r15
-
-# arg0: state, arg1: key, arg2: keylen
-#rc4_initialize:
 
 secret_key:
     .data #{SECRET_RC4_KEY.inspect}, 0
