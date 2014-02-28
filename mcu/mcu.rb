@@ -1,10 +1,13 @@
 #!/usr/bin/env ruby
 
+require 'etc'
 require 'socket'
 require 'timeout'
 require 'zlib'
 require 'openssl'
 
+RUN_AS_USER = 'mcu'
+SERVER_POOL_NPROCESS = 8
 EMAIL_SECRET = "fufufufufu@challenge.sstic.org"
 
 class Emulator
@@ -51,10 +54,11 @@ Write an e-mail at this address to prove you just finished this challenge:
     @@instances = []
 
     attr_reader :client
-    def initialize(client)
+    def initialize(client, peer)
         @firmware_format = :hex
         @creation_time = Time.now
         @client = client
+        @peer = peer
         @@instances.push(self)
         STDERR.puts "New client from #{self.remote_ip}" if $DEBUG
     end
@@ -68,7 +72,7 @@ Write an e-mail at this address to prove you just finished this challenge:
     end
 
     def remote_ip
-        @client.peeraddr.last
+        @peer.ip_address
     end
 
     def kill(reason = '')
@@ -254,7 +258,7 @@ Write an e-mail at this address to prove you just finished this challenge:
                 @registers[args[0]] |= byte
             when 'str'
                 byte = @registers[args[0]] & 0x00ff
-                memory_write(@registers[args[1]] + @registers[args[2]], [ byte ])
+                memory_write((@registers[args[1]] + @registers[args[2]]) & 0xffff, [ byte ])
 
             when 'bkpt'
                 exception(:bkpt)
@@ -346,19 +350,42 @@ Write an e-mail at this address to prove you just finished this challenge:
     end
 end
 
-server = TCPServer.new 20000
-loop do
-    Thread.start(server.accept) do |client|
-        emu = Emulator.new(client)
-        begin
-            emu.run
+def drop_privileges(user)
+    return if Etc.getpwuid.name == user
+    fail("Cannot drop privileges to user #{user}") if Etc.getpwuid.uid != 0
 
-        rescue Exception => exc
-            emu.kill(exc.message)
-        ensure
-            emu.kill
+    Process::UID.change_privilege(user)
+end
+
+def run_server(iface, port)
+    server = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
+    server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)
+    server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEPORT, true)
+    server.bind(Addrinfo.tcp(iface, port))
+    server.listen(10)
+
+    loop do
+        Thread.start(server.accept) do |client, peer|
+            emu = Emulator.new(client, peer)
+            begin
+                emu.run
+            rescue Exception => exc
+                emu.kill(exc.message)
+            ensure
+                emu.kill
+            end
         end
     end
 end
 
-__END__
+drop_privileges(RUN_AS_USER)
+
+1.upto(SERVER_POOL_NPROCESS) do
+    Process.fork {
+        run_server("0.0.0.0", 20000)
+    }
+end
+
+puts "[*] Spawned #{SERVER_POOL_NPROCESS} instances."
+Process.wait
+
