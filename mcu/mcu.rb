@@ -351,8 +351,15 @@ Write an e-mail at this address to prove you just finished this challenge:
 end
 
 def drop_privileges(user)
-    return if Etc.getpwuid.name == user
-    fail("Cannot drop privileges to user #{user}") if Etc.getpwuid.uid != 0
+    current_user = Etc.getpwuid.name
+    return if current_user == user
+
+    user_exists = !!Etc.getpwnam(user) rescue false
+    if Etc.getpwuid.uid != 0 or not user_exists
+        STDERR.puts "Warning: Cannot drop privileges to user #{user}."
+        STDERR.puts "Running under user #{current_user} instead."
+        return
+    end
 
     Process::UID.change_privilege(user)
 end
