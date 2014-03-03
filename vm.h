@@ -8,13 +8,7 @@
 #include <stdint.h>
 #include "chacha.h"
 #include "syscalls.h"
-
-static inline void _memcpy(void *dst, void *src, size_t len)
-{
-    int i;
-    for ( i = 0; i < len; i++ )
-        ((unsigned char *)dst)[i] = ((unsigned char *)src)[i];
-}
+#include "string.h"
 
 static void _vm_print(char *msg, size_t size)
 {
@@ -51,11 +45,6 @@ static void vm_hexdump(const void *addr, size_t size)
 #endif
 
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
-
-#define PAGE_SHIFT 12UL
-#define PAGE_SIZE (1UL << PAGE_SHIFT)
-#define REQUIRED_PAGES(nr_bytes) ((nr_bytes + PAGE_SIZE - 1) >> PAGE_SHIFT)
-#define ROUND_PAGE(nr_bytes) (REQUIRED_PAGES(nr_bytes) << PAGE_SHIFT)
 
 typedef unsigned long vm_addr_t;
 typedef unsigned long vm_page_t;

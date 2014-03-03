@@ -7,6 +7,11 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#define PAGE_SHIFT 12UL
+#define PAGE_SIZE (1UL << PAGE_SHIFT)
+#define REQUIRED_PAGES(nr_bytes) ((nr_bytes + PAGE_SIZE - 1) >> PAGE_SHIFT)
+#define ROUND_PAGE(nr_bytes) (REQUIRED_PAGES(nr_bytes) << PAGE_SHIFT)
+
 #define SYSCALL_DECL(name) static inline long (sys_##name)
 
 SYSCALL_DECL(syscall1)(int n, long arg1)

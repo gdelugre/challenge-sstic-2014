@@ -1,6 +1,9 @@
 *.s
 *.trace
 *.elf
+*.packed
 *.bin
 *.a
+*.o
 vm_bytecode.h
+code_compressed.h

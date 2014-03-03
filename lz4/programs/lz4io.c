@@ -147,7 +147,7 @@ static const int one = 1;
 //**************************************
 // Local Parameters
 //**************************************
-static int displayLevel = 0;   // 0 : no display  // 1: errors  // 2 : + result + interaction + warnings ;  // 3 : + progression;  // 4 : + information
+static int displayLevel = 4;   // 0 : no display  // 1: errors  // 2 : + result + interaction + warnings ;  // 3 : + progression;  // 4 : + information
 static int overwrite = 1;
 static int blockSizeId = LZ4S_BLOCKSIZEID_DEFAULT;
 static int blockChecksum = 0;
