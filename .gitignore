@@ -1,0 +1,4 @@
+*.s
+*.trace
+*.elf
+*.bin

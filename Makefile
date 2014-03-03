@@ -11,6 +11,7 @@ COMPILE_RELEASE=$(CC) $(CFLAGS_RELEASE) -S
 COMPILE_DEBUG=$(CC) $(CFLAGS_DEBUG)
 ASSEMBLE=$(AS)
 LINK=$(LD) $(LDFLAGS)
+LZ4_DIR=lz4
 SRC=main.c chacha.c vm.c
 TARGET=sstic14-armecage.elf
 
@@ -46,6 +47,7 @@ gdb:
 
 util:
 	gcc chacha.c chacha_util_crypt.c -o chacha_crypt
+	make -C $(LZ4_DIR)/programs lz4
 
 clean:
 	rm -f $(TARGET) *.o *.s vm_bytecode.* a.out
