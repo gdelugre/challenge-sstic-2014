@@ -1,7 +1,8 @@
 #!/usr/bin/env ruby
 
-PROGRAM_HDR = "vm_bytecode.h"
-PROGRAM_BIN = "vm_bytecode.bin"
+exit(1) if ARGV.empty?
+
+OUTPUT_FILE = ARGV[0]
 PROGRAM_SIZE = 8192 * 64
 
 LABELS = {}
@@ -199,6 +200,7 @@ def assemble(bytecode, prog)
     bytecode
 end
 
+
 bytecode = "\x00" * PROGRAM_SIZE
 install_rodata(bytecode)
 install_consts(bytecode)
@@ -263,7 +265,8 @@ ASM
 
 @bytecode[0x38,8] = [ 0x40 ].pack 'Q'
 
-File.binwrite(PROGRAM_BIN, @bytecode)
+File.binwrite(OUTPUT_FILE, @bytecode)
+__END__
 system "./chacha_crypt #{PROGRAM_BIN}"
 
 @bytecode = File.binread PROGRAM_BIN
@@ -286,5 +289,4 @@ File.open(PROGRAM_HDR, 'w') do |fd|
     fd.puts
     fd.puts "#endif"
 end
-
 

@@ -2,3 +2,5 @@
 *.trace
 *.elf
 *.bin
+*.a
+vm_bytecode.h
