@@ -103,6 +103,8 @@ Write an e-mail at this address to prove you just finished this challenge:
                 return
 
             rescue Exception => e
+                STDERR.puts "[%s] Bug detected: %s" % [ Time.now.to_s, e.message.inspect ]
+                STDERR.puts "#{e.backtrace.join($/)}"
                 crash_report(e)
                 return
             end
@@ -356,8 +358,8 @@ def drop_privileges(user)
 
     user_exists = !!Etc.getpwnam(user) rescue false
     if Etc.getpwuid.uid != 0 or not user_exists
-        STDERR.puts "Warning: Cannot drop privileges to user #{user}."
-        STDERR.puts "Running under user #{current_user} instead."
+        STDERR.puts "[-] Warning: Cannot drop privileges to user #{user}."
+        STDERR.puts "[-] Running under user #{current_user} instead."
         return
     end
 
@@ -387,12 +389,21 @@ end
 
 drop_privileges(RUN_AS_USER)
 
-1.upto(SERVER_POOL_NPROCESS) do
-    Process.fork {
-        run_server("0.0.0.0", 20000)
-    }
-end
+trap(:INT) {
+    exit
+}
 
-puts "[*] Spawned #{SERVER_POOL_NPROCESS} instances."
-Process.wait
+running_processes = 0
+loop do
+    while running_processes < SERVER_POOL_NPROCESS
+        Process.fork {
+            puts "[%s] New server process spawned, pid %d." % [ Time.now.to_s, $$ ]
+            run_server("0.0.0.0", 20000)
+        }
+        running_processes += 1
+    end
+
+    Process.wait
+    running_processes -= 1
+end
 
