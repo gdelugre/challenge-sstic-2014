@@ -72,7 +72,8 @@ gdb:
 
 util:
 	gcc chacha.c chacha_util_crypt.c -o $(UTILS_DIR)/chacha_crypt
-	gcc lz4_util_compress.c $(LZ4_DIR)/lz4.c -o $(UTILS_DIR)/lz4_util_compress
+	gcc lz4_util_compress.c $(LZ4_DIR)/lz4.c $(LZ4_DIR)/lz4hc.c -o $(UTILS_DIR)/lz4_util_compress
+	ln -sf lz4_util_compress $(UTILS_DIR)/lz4hc_util_compress
 
 clean:
-	rm -f $(TARGET) *.o *.s vm_bytecode.* a.out *.elf *.packed
+	rm -f $(TARGET) $(TMP_DIR)/* *.o *.s vm_bytecode.* a.out *.elf *.packed

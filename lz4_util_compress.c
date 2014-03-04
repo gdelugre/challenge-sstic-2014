@@ -41,7 +41,11 @@ int main(int argc, char *argv[])
     }
     fclose(fpi);
 
-    output_size = LZ4_compress(input_buffer, output_buffer, input_size);
+    if ( !strstr(argv[0], "lz4hc") )
+        output_size = LZ4_compress(input_buffer, output_buffer, input_size);
+    else
+        output_size = LZ4_compressHC2(input_buffer, output_buffer, input_size, 16);
+
     if ( output_size == 0 )
     {
         fprintf(stderr, "LZ4_compress error\n");

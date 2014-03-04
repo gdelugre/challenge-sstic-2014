@@ -21,7 +21,7 @@ class CPU::AArch64
                     while fake_imm > 0xffff
                         shift = rand(0..63)
                         fake_imm = self.ror64(imm, shift)
-                        p "imm = #{imm}", "fake_imm = #{fake_imm}"
+                        #p "imm = #{imm}", "fake_imm = #{fake_imm}"
                     end
 
                     #p "shift = #{shift}"

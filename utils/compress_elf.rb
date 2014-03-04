@@ -7,6 +7,7 @@ exit(1) if ARGV.size < 2
 elf = File.binread ARGV[0]
 entry = elf[0x18,8].unpack('Q')[0]
 phoff = elf[0x20,8].unpack('Q')[0]
+ehsize = elf[34, 2].unpack('v')[0]
 phnum = elf[0x38,2].unpack('v')[0]
 phentsize = 56
 
@@ -26,7 +27,7 @@ struct elf_segment
     int compressed;
 };
 
-#define MAX_NR_SEGMENTS 8
+#define MAX_NR_SEGMENTS 4
 struct elf_memory_map
 {
     unsigned int nr_segments; 
@@ -61,9 +62,13 @@ def define_segment(addr, size, data, prot, compressed)
     DEF
 end
 
+phdrs = elf[phoff, phentsize * phnum]
+elf[0, ehsize] = "\x00" * ehsize
+elf[phoff, phdrs.size] = "\x00" * phdrs.size
+
 segdefs = []
 for i in (0 ... phnum)
-    phdr = elf[phoff + phentsize * i, phentsize]
+    phdr = phdrs[phentsize * i, phentsize]
     type, flags, offset, vaddr, paddr, filesz, memsz, align = phdr.unpack('V2Q6')
 
     segdata, compressed = '', false
@@ -71,7 +76,7 @@ for i in (0 ... phnum)
     segfile = Tempfile.new('elf')
     begin
         segfile.write(elf[offset, filesz]); segfile.close
-        system "utils/lz4_util_compress #{segfile.path} #{segfile.path}.compressed"
+        system "utils/lz4hc_util_compress #{segfile.path} #{segfile.path}.compressed"
         
         if File.size?("#{segfile.path}.compressed").to_i >= filesz
             segdata = elf[offset, filesz]
