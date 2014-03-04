@@ -14,9 +14,13 @@ ASSEMBLE=$(AS)
 LINK=$(LD) $(LDFLAGS)
 LZ4_DIR=lz4
 TMP_DIR=tmp
+STUB_DIR=stub
 UTILS_DIR=utils
 SRC=main.c chacha.c vm.c
 TARGET=sstic14-armecage.elf
+
+TEXT_ADDR=0x400000
+DATA_ADDR=0x500000
 
 all: debug 
 
@@ -27,11 +31,11 @@ dirs:
 	mkdir -p $(TMP_DIR)
 
 compress:
-	$(OBJCOPY) -O binary --only-section=.text $(TARGET) $(TMP_DIR)/text_section.bin
-	$(UTILS_DIR)/lz4_util_compress $(TMP_DIR)/text_section.bin $(TMP_DIR)/text_section.compressed
-	$(UTILS_DIR)/bin_to_c_decl.rb $(TMP_DIR)/text_section.compressed code_compressed
-	rm -f $(TMP_DIR)/text_section.bin $(TMP_DIR)/text_section.compressed
-	$(CC) $(CFLAGS_RELEASE) stub.c $(LZ4_DIR)/lz4_reduced.c -o $(TARGET).packed -DENTRYPOINT=0x400c98 -DSEGMENT_ADDR=0x400000 -DSEGMENT_SIZE=0x825d8 -Wl,-Ttext=0x300000
+	$(UTILS_DIR)/compress_elf.rb $(TARGET) $(TMP_DIR)/elf_map.h
+	$(CC) $(CFLAGS_RELEASE) $(STUB_DIR)/stub.c $(LZ4_DIR)/lz4_reduced.c -I. -I$(TMP_DIR) -o $(TARGET).packed -Wl,-Ttext-segment=0x10000
+	$(STRIP) $(TARGET).packed
+	$(OBJCOPY) -w -R '.note.gnu.build-id' -R .comment $(TARGET).packed
+	#rm -f *.o
 	echo "Done."
 
 compile_release: util bytecode
@@ -40,7 +44,7 @@ compile_release: util bytecode
 		ruby armor.rb --enable "shuffle_blocks,shuffle_insns,junk,expand_insns" $$obj ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \
 	done
-	$(LINK) *.o -o $(TARGET)
+	$(LINK) -Ttext-segment=$(TEXT_ADDR) -Tdata=$(DATA_ADDR) *.o -o $(TARGET)
 	rm -f *.o
 	$(STRIP) $(TARGET)
 

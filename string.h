@@ -1,7 +1,7 @@
 #ifndef _H_STRING
 #define _H_STRING
 
-static inline void _memcpy(void *dst, void *src, size_t len)
+static inline void _memcpy(void *dst, const void *src, size_t len)
 {
     int i;
     for ( i = 0; i < len; i++ )
