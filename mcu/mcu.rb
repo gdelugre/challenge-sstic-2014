@@ -27,7 +27,7 @@ class Emulator
     rc4.key_len = RC4_SECRET_KEY.length
     rc4.key = RC4_SECRET_KEY
 
-    PROTECTED_MEMORY_REGION = (0xF800...0xFC00)
+    PROTECTED_MEMORY_REGION = (0xF800 .. 0xFBFF)
     PROTECTED_MEMORY = (rc4.update(<<-PROTECTED.ljust(PROTECTED_MEMORY_REGION.size, "\x00")) + rc4.final).bytes
 Congratulations !
 Write an e-mail at this address to prove you just finished this challenge:
@@ -39,7 +39,7 @@ Write an e-mail at this address to prove you just finished this challenge:
     MAX_EXECUTION_TIME = 5
     MAX_FIRMWARE_SIZE = 0x800
     MEMORY_SIZE = 1 << 16
-    UNMAPPED_REGION = (0x800 ... 0x1000)
+    UNMAPPED_REGION = (0x800 .. 0xFFF)
     UART_TX_REGISTER = 0xFC00
     HALT_CPU_REGISTER = 0xFC10
     EXCEPTION_MESSAGES = 
@@ -92,12 +92,18 @@ Write an e-mail at this address to prove you just finished this challenge:
         @flags = { z:0, s:0 }
         @cpu_halted = false
 
-        Timeout.timeout(MAX_EXECUTION_TIME) {
             begin
-                while not @cpu_halted do
-                    opcode, args = parse_instruction(@pc)
-                    @pc = execute_insn(opcode, args)
+                begin
+                    Timeout.timeout(MAX_EXECUTION_TIME) {
+                        while not @cpu_halted do
+                            opcode, args = parse_instruction(@pc)
+                            @pc = execute_insn(opcode, args)
+                        end
+                    }
+                rescue Timeout::Error
+                    exception(:watchdog)
                 end
+
             rescue EmulatorException => exc
                 crash_report(exc)
                 return
@@ -108,30 +114,48 @@ Write an e-mail at this address to prove you just finished this challenge:
                 crash_report(e)
                 return
             end
-        } rescue exception(:watchdog)
     end
 
     private
 
-    def exception(type)
+    def exception(type, at = nil)
+        @fault_addr = at unless at.nil?
         raise EmulatorException, EXCEPTION_MESSAGES[type]
     end
 
-    def memory_read(addr, size)
-        if UNMAPPED_REGION.include?(addr) or UNMAPPED_REGION.include?(addr+size) or (addr < UNMAPPED_REGION.begin and addr+size > UNMAPPED_REGION.end)
-            @fault_addr = addr
-            exception(:access_violation)
-        end
+    def overlap(range1, range2)
+        not (range1.begin > range2.end or range1.end < range2.begin)
+    end
 
+    def read_access_check(addr, size)
+        addr_start = addr
+        addr_end = (addr + size - 1) & 0xffff
+        fail if addr_end < addr_start
+        
+        access_range = Range.new(addr_start, addr_end)
+        exception(:access_violation, addr) if overlap(UNMAPPED_REGION, access_range)
+    end
+
+    def write_access_check(addr, size)
+        addr_start = addr
+        addr_end = (addr + size - 1) & 0xffff
+        fail if addr_end < addr_start
+        
+        access_range = Range.new(addr_start, addr_end)
+        exception(:access_violation, addr) if overlap(UNMAPPED_REGION, access_range)
+        exception(:access_violation, addr) if overlap(ROM_REGION, access_range)
+    end
+
+    def memory_read(addr, size)
+        read_access_check(addr, size)
         @memory[addr, size]
     end
 
     def memory_write(addr, value)
         size = value.size
-        if UNMAPPED_REGION.include?(addr) or UNMAPPED_REGION.include?(addr+size) or (addr < UNMAPPED_REGION.begin and addr+size > UNMAPPED_REGION.end)
-            @fault_addr = addr
-            exception(:access_violation)
-        elsif addr == UART_TX_REGISTER and value.size == 1
+        write_access_check(addr, size)
+
+        if addr == UART_TX_REGISTER and value.size == 1
             @client.print(value[0].chr)
             @client.flush
         elsif addr == HALT_CPU_REGISTER and value.size == 1 and value[0] & 1 != 0
