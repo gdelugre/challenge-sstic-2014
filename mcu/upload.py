@@ -37,7 +37,10 @@ resp = b''
 while True:
     ready, _, _ = select.select([s], [], [], 10)
     if ready:
-        data = s.recv(32)
+        try:
+            data = s.recv(32)
+        except:
+            break
         if not data:
             break
         resp += data

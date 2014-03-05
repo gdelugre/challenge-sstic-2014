@@ -75,5 +75,9 @@ util:
 	gcc lz4_util_compress.c $(LZ4_DIR)/lz4.c $(LZ4_DIR)/lz4hc.c -o $(UTILS_DIR)/lz4_util_compress
 	ln -sf lz4_util_compress $(UTILS_DIR)/lz4hc_util_compress
 
+bundle:
+	@cd mcu; ruby assembler.rb > /dev/null
+	tar cJvf mcu_programmer.txz mcu/upload.py mcu/fw.hex
+
 clean:
-	rm -f $(TARGET) $(TMP_DIR)/* *.o *.s vm_bytecode.* a.out *.elf *.packed
+	rm -f $(TARGET) $(TMP_DIR)/* *.o *.s vm_bytecode.* a.out *.elf *.packed *.txz
