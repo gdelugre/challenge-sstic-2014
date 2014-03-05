@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import socket, select
+import binascii, random, array
 
 #
 # Microcontroller architecture is still undocumented.
@@ -17,6 +18,15 @@ import socket, select
 
 FIRMWARE = "fw.hex"
 
+def fuzz(line):
+    if len(line) == 11:
+        return line
+    header = [c for c in binascii.unhexlify(line[1:9])]
+    data = binascii.unhexlify(line[9:-3])
+    fuzzed = [ c ^ (random.randint(0,0xff) if random.random() > 0.8 else 0) for c in data ]
+    crc = [ (-sum(header + fuzzed)) & 0xff ]
+    return line[0:9] + binascii.hexlify(array.array('B', fuzzed + crc).tostring()).upper() + b'\n'
+
 print("---------------------------------------------")
 print("----- Microcontroller firmware uploader -----")
 print("---------------------------------------------")
@@ -28,7 +38,7 @@ s.connect(('91.121.41.47', 20000))
 print(":: Serial port connected.")
 print(":: Uploading firmware... ", end='')
 
-[ s.send(line) for line in open(FIRMWARE, 'rb') ]
+[ s.send(fuzz(line)) for line in open(FIRMWARE, 'rb') ]
 
 print("done.")
 print()
@@ -37,7 +47,10 @@ resp = b''
 while True:
     ready, _, _ = select.select([s], [], [], 10)
     if ready:
-        data = s.recv(32)
+        try:
+            data = s.recv(32)
+        except:
+            break
         if not data:
             break
         resp += data
