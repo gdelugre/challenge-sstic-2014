@@ -60,7 +60,7 @@ Write an e-mail at this address to prove you just finished this challenge:
         @client = client
         @peer = peer
         @@instances.push(self)
-        STDERR.puts "New client from #{self.remote_ip}" if $DEBUG
+        puts "[%s] Created new emulator instance for %s." % [ Time.now.to_s, self.remote_ip ]
     end
 
     def self.instances
@@ -76,9 +76,12 @@ Write an e-mail at this address to prove you just finished this challenge:
     end
 
     def kill(reason = '')
-        STDERR.puts "Closing connection with #{self.remote_ip}" if $DEBUG and not @client.closed?
-        @client.puts "CLOSING: #{reason}." unless reason.empty? or @client.closed?
-        @client.close unless @client.closed?
+        puts "[%s] Closing connection with %s (reason: %s)." % [ Time.now.to_s, self.remote_ip, reason.inspect ]
+        unless @client.closed?
+            @client.puts "CLOSING: #{reason}." unless reason.empty?
+            sleep 1.0
+            @client.close
+        end
         @@instances.delete(self)
     end
 
@@ -156,7 +159,7 @@ Write an e-mail at this address to prove you just finished this challenge:
         write_access_check(addr, size)
 
         if addr == UART_TX_REGISTER and value.size == 1
-            @client.print(value[0].chr)
+            @client.syswrite(value[0].chr)
             @client.flush
         elsif addr == HALT_CPU_REGISTER and value.size == 1 and value[0] & 1 != 0
             @cpu_halted = true
@@ -338,7 +341,7 @@ Write an e-mail at this address to prove you just finished this challenge:
         fw_data = []
 
         until eof
-            fail("invalid line") if (start = @client.read(1)).size != 1 or start != ?:
+            fail("invalid line") if not (start = @client.read(1)) or start != ?:
             hdr = @client.read(8)
             fail("invalid line") unless hdr.upcase =~ /^([0-9A-F]{2})([0-9A-F]{4})([0-9A-F]{2})$/
 
@@ -391,7 +394,7 @@ def drop_privileges(user)
 end
 
 def run_server(iface, port)
-    server = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
+    server = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM)
     server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)
     server.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEPORT, true)
     server.bind(Addrinfo.tcp(iface, port))

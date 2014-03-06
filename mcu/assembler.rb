@@ -174,11 +174,11 @@ call rc4_decrypt
 mov r0, goodbye_str
 call print
 
-xor r0, r0, r0
-jz end
+#xor r0, r0, r0
+#jz end
 
-mov r0, 0xF800
-call print
+#mov r0, 0xF800
+#call print
 
 end:
     xor r0, r0, r0
