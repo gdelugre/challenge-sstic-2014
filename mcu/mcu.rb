@@ -28,14 +28,14 @@ class Emulator
     rc4.key = RC4_SECRET_KEY
 
     PROTECTED_MEMORY_REGION = (0xF800 .. 0xFBFF)
-    PROTECTED_MEMORY = (rc4.update(<<-PROTECTED.ljust(PROTECTED_MEMORY_REGION.size, "\x00")) + rc4.final).bytes
+    PROTECTED_MEMORY = (rc4.update(<<-PROTECTED.rjust(PROTECTED_MEMORY_REGION.size, "\x00")) + rc4.final).bytes
 Congratulations !
 Write an e-mail at this address to prove you just finished this challenge:
     #{EMAIL_SECRET}
     PROTECTED
 
-    MAX_CLIENT_BY_ADDR = 2
-    MAX_LOADING_TIME = 15
+    MAX_CLIENT_BY_ADDR = 5
+    MAX_LOADING_TIME = 10
     MAX_EXECUTION_TIME = 5
     MAX_FIRMWARE_SIZE = 0x800
     MEMORY_SIZE = 1 << 16
@@ -76,8 +76,8 @@ Write an e-mail at this address to prove you just finished this challenge:
     end
 
     def kill(reason = '')
-        puts "[%s] Closing connection with %s (reason: %s)." % [ Time.now.to_s, self.remote_ip, reason.inspect ]
         unless @client.closed?
+            puts "[%s] Closing connection with %s (reason: %s)." % [ Time.now.to_s, self.remote_ip, reason.inspect ]
             @client.puts "CLOSING: #{reason}." unless reason.empty?
             sleep 1.0
             @client.close
@@ -109,13 +109,13 @@ Write an e-mail at this address to prove you just finished this challenge:
 
             rescue EmulatorException => exc
                 crash_report(exc)
-                return
+                raise
 
             rescue Exception => e
                 STDERR.puts "[%s] Bug detected: %s" % [ Time.now.to_s, e.message.inspect ]
                 STDERR.puts "#{e.backtrace.join($/)}"
                 crash_report(e)
-                return
+                raise
             end
     end
 

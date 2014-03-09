@@ -77,7 +77,7 @@ util:
 
 bundle:
 	@cd mcu; ruby assembler.rb > /dev/null
-	tar cJvf mcu_programmer.txz mcu/upload.py mcu/fw.hex
+	zip mcu_programmer.zip mcu/upload.py mcu/fw.hex
 
 clean:
 	rm -f $(TARGET) $(TMP_DIR)/* *.o *.s vm_bytecode.* a.out *.elf *.packed *.txz
