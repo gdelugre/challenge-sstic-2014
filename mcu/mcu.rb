@@ -39,6 +39,7 @@ Write an e-mail at this address to prove you just finished this challenge:
     UNMAPPED_REGION = (0x800 .. 0xFFF)
     UART_TX_REGISTER = 0xFC00
     HALT_CPU_REGISTER = 0xFC10
+    TSC_REGISTER = 0xFC12
     EXCEPTION_CONTEXT = 0xFC20
 
     EXCEPTION_MESSAGES = 
@@ -95,6 +96,7 @@ Write an e-mail at this address to prove you just finished this challenge:
         @fault_addr = 0x0000
         @flags = { z:0, s:0 }
         @cpu_halted = false
+        @ticks = 0
 
         begin
             begin
@@ -154,6 +156,10 @@ Write an e-mail at this address to prove you just finished this challenge:
 
     def memory_read(addr, size)
         read_access_check(addr, size)
+
+        return [ (@ticks >> 8) & 0xff ] if addr == TSC_REGISTER and size == 1
+        return [ @ticks & 0xff ] if addr == TSC_REGISTER+1 and size == 1
+        
         @memory[addr, size]
     end
 
@@ -266,6 +272,8 @@ Write an e-mail at this address to prove you just finished this challenge:
 
     def execute_insn(opcode, args)
         STDERR.puts "Executing #{opcode} #{args.join(', ')}" if $DEBUG
+        @ticks += 1
+
         case opcode
             when 'jmp'
                 return (@pc + args[0]) & 0xffff
@@ -326,7 +334,7 @@ Write an e-mail at this address to prove you just finished this challenge:
 
         end
 
-        #STDERR.puts @registers.map.with_index{|r,i| "r#{i}:#{r.to_s(16)}"}.inspect if $DEBUG
+        STDERR.puts @registers.map.with_index{|r,i| "r#{i}:#{r.to_s(16)}"}.inspect if $DEBUG
         (@pc + 2) & 0xffff
     end
 

@@ -163,7 +163,7 @@ def assemble(lst, base = 0)
 end
 
 SECRET_RC4_KEY = "YeahRiscIsGood!"
-SUCCESS_STR = "Firmware successfully uploaded.\n"
+SUCCESS_STR = "Firmware successfully uploaded in 0x$$$$ CPU cycles.\n"
 
 kind = ARGV.empty? ? 'fw' : 'rom'
 program = assemble(<<-LISTING) if kind == 'fw'
@@ -181,14 +181,21 @@ mov r1, goodbye_str
 mov r2, #{SUCCESS_STR.size.to_s(16)}
 call rc4_decrypt
 
+mov r0, 0x1100
+call read_tsc
+call read_word
+
+mov r10, r0
+
+mov r1, #{"$".ord.to_s(16)}
+mov r0, goodbye_str
+call strchr
+
+mov r1, r10
+call to_hex
+
 mov r0, goodbye_str
 call print
-
-#xor r0, r0, r0
-#jz end
-
-#mov r0, 0xF800
-#call print
 
 jmp halt
 
@@ -312,6 +319,70 @@ halt:
     syscall 2
     jmp halt
 
+read_tsc:
+    syscall 3
+    ret r15
+
+# read_word(int *);
+read_word:
+    mov r1, 1
+    mov r2, 0x100
+    ldr r3, r0, r1
+    sub r1, r1, r1
+    ldr r4, r0, r1
+    mul r4, r4, r2
+    or r0, r3, r4
+    ret r15
+
+# strchr(char *, char);
+strchr:
+    xor r2, r2, r2
+    mov r3, 1
+    .strchr_loop:
+        xor r4, r4, r4
+        ldr r4, r0, r2
+        and r4, r4, r4
+        jz .strchr_not_found
+        sub r4, r4, r1 
+        jz .strchr_end
+        add r0, r0, r3
+        jmp .strchr_loop
+    .strchr_not_found:
+    xor r0, r0, r0
+    .strchr_end:
+    ret r15
+
+# to_hex(char *, int)
+to_hex:
+    mov r4, 0x1000
+    mov r5, 0xf
+    mov r6, 0xa
+    mov r7, 1
+
+    .to_hex_next_digit:
+    div r2, r1, r4
+    and r2, r2, r5
+    sub r3, r2, r6
+    js .to_hex_num
+        mov r3, 0x41
+        jmp .hex_write
+    .to_hex_num:
+        mov r3, 0x30
+    .hex_write:
+    add r2, r3, r2
+    xor r3, r3, r3
+    str r2, r0, r3
+    add r0, r0, r7
+    sub r2, r4, r7
+    jz .to_hex_end
+
+    add r3, r5, r7    
+    div r4, r4, r3
+    jmp .to_hex_next_digit
+
+    .to_hex_end:
+    ret r15
+
 secret_key:
     .data #{SECRET_RC4_KEY.inspect}, 0
 
@@ -338,6 +409,9 @@ jz system_call_print
 sub r0, r0, r1
 jz system_call_halt
 
+sub r0, r0, r1
+jz system_call_read_tsc
+
 mov r0, error_bad_syscall
 call print
 
@@ -349,10 +423,30 @@ system_call_halt:
     str r2, r1, r0
     jmp system_call_halt
 
+# print(char *);
 system_call_print:
     mov r0, 0xFC20
     call read_word
     call print
+    sysret
+
+# read_tsc(int *);
+system_call_read_tsc:
+    mov r0, 0xFC20
+    call read_word
+    mov r6, 0xFC12
+    mov r1, 1
+    xor r4, r4, r4
+    .loop_tsc:
+        ldr r5, r6, r1
+        ldr r2, r6, r4
+        ldr r3, r6, r4
+        sub r3, r3, r2
+        jnz .loop_tsc
+    mov r3, 0x100
+    mul r2, r2, r3
+    or r1, r2, r5
+    call write_word
     sysret
 
 reset:
@@ -394,11 +488,11 @@ write_word:
 memset:
     mov r3, 1
     and r2, r2, r2  
-    jz memset_end
+    jz .memset_end
     sub r2, r2, r3
     str r1, r0, r2
     jmp memset
-    memset_end:
+    .memset_end:
     ret r15
     
 #
@@ -413,23 +507,23 @@ print:
     mov r10, 1
     xor r11, r11, r11
 
-    print_loop: 
+    .print_loop: 
         add r9, r14, r8
         sub r9, r9, r12
-        js allowed_addr
+        js .allowed_addr
         add r9, r14, r8
         sub r9, r9, r13
-        jns allowed_addr
-        jmp exit_bad_addr
-    allowed_addr:
+        jns .allowed_addr
+        jmp .exit_bad_addr
+    .allowed_addr:
         xor r9, r9, r9
         ldr r9, r14, r8
         and r9, r9, r9
-        jz print_ret
+        jz .print_ret
         str r9, r13, r11
         add r8, r8, r10
-        jmp print_loop
-    print_ret:
+        jmp .print_loop
+    .print_ret:
     ret r15
 
 exit_bad_addr:
