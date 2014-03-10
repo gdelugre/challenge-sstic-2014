@@ -166,8 +166,10 @@ end
 
 def compute_labels(prog)
     base = CODE_BASE_ADDR
-    prog.lines.map(&:chomp).each do |line|
+    prog.lines.map(&:chomp).map(&:strip).each do |line|
         next if line.empty?
+        next if line[0] == ?#
+
         if line =~ /(\w+):$/
             LABELS[$1] = base
         else
@@ -179,9 +181,8 @@ end
 def assemble(bytecode, prog)
     compute_labels(prog)
     base = CODE_BASE_ADDR
-    prog.lines.map(&:chomp).each do |line|
-        next if line.empty?
-        next if line[-1] == ?:
+    prog.lines.map(&:chomp).map(&:strip).each do |line|
+        next if line.empty? or line[-1] == ?: or line[0] == ?#
 
         if line.count(' ') == 0
             opcode = line
@@ -206,7 +207,9 @@ install_rodata(bytecode)
 install_consts(bytecode)
 
 @bytecode = assemble(bytecode, <<ASM)
-NONE
+#
+# SSTIC, crack-me assembly routine.
+#
 MOV R0, #{"Please enter the password: ".size}
 PRINT #{str_addr("Please enter the password: ")}
 
@@ -219,45 +222,45 @@ XOR R1, R1
 XOR R3, R3
 
 check_chars:
-CMP R1, R0
-BREQ dump
+    CMP R1, R0
+    BREQ dump
 
-MOV R2, #{BSS_BASE_ADDR}
-ADD R2, R1
-LDRB R2, R2
-CMP R2, #{const_addr('0'.ord)}
-BRLO failure
-CMP R2, #{const_addr('f'.ord)}
-BRHI failure
-CMP R2, #{const_addr('a'.ord)}
-BRLO check_num
-SUB R2, #{const_addr('a'.ord)}
-BR next_char
+    MOV R2, #{BSS_BASE_ADDR}
+    ADD R2, R1
+    LDRB R2, R2
+    CMP R2, #{const_addr('0'.ord)}
+    BRLO failure
+    CMP R2, #{const_addr('f'.ord)}
+    BRHI failure
+    CMP R2, #{const_addr('a'.ord)}
+    BRLO check_num
+    SUB R2, #{const_addr('a'.ord)}
+    BR next_char
 check_num:
-CMP R2, #{const_addr('9'.ord)}
-BRHI failure
-SUB R2, #{const_addr('0'.ord)}
+    CMP R2, #{const_addr('9'.ord)}
+    BRHI failure
+    SUB R2, #{const_addr('0'.ord)}
 
 next_char:
-SHL R3, #{const_addr(4)}
-OR R3, R2
-ADD R1, #{const_addr(1)}
-BR check_chars
+    SHL R3, #{const_addr(4)}
+    OR R3, R2
+    ADD R1, #{const_addr(1)}
+    BR check_chars
 
 dump:
-MOV R0, #{"Dumping payload...\n".size}
-PRINT #{str_addr("Dumping payload...\n")}
+    MOV R0, #{"Dumping payload...\n".size}
+    PRINT #{str_addr("Dumping payload...\n")}
 
-MOV R2, 64
-XOR R1, R1
-MOV R0, #{"payload.bin".size}
-WRITEFILE #{str_addr("payload.bin")}
+    MOV R2, 64
+    XOR R1, R1
+    MOV R0, #{"payload.bin".size}
+    WRITEFILE #{str_addr("payload.bin")}
 
 BR end
 
 failure:
-MOV R0, #{"Wrong password.\n".size}
-PRINT #{str_addr("Wrong password.\n")}
+    MOV R0, #{"Wrong password.\n".size}
+    PRINT #{str_addr("Wrong password.\n")}
 
 end:
 HALT

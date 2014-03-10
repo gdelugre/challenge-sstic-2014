@@ -197,6 +197,41 @@ void vm_stop(vm_state *state, int status)
     state->status = status;
 }
 
+static int vm_read_string(vm_state *state, vm_addr_t addr, char *buffer)
+{
+    char *page;
+    size_t rem_size, nr_read = 0;
+    int eos = 0;
+    char c;
+
+    while ( !eos )
+    {
+        page = (char *) vm_page_get(state, addr);
+        if ( !page )
+            return nr_read;
+
+        rem_size = VM_PAGE_SIZE - VM_PAGE_OFFSET(addr);
+        while ( rem_size )
+        {
+            c = page[ VM_PAGE_OFFSET(addr) ];
+            if ( c == '\0' )
+            {
+                *buffer = '\0';
+                eos = 1;
+                break;
+            }
+
+            *buffer++ = c;
+            addr++;
+            rem_size--;
+        }
+
+        vm_page_put(state, page);
+    }
+
+    return 0;
+}
+
 static int vm_read_word(vm_state *state, vm_addr_t addr, vm_word_t *word)
 {
     if ( vm_read(state, addr, word, sizeof(*word)) != sizeof(*word) )

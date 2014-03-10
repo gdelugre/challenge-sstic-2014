@@ -6,5 +6,6 @@
 *.a
 *.o
 *.txz
+mcu/*.hex
+tmp/*
 vm_bytecode.h
-code_compressed.h
