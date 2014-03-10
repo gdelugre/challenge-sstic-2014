@@ -3,16 +3,19 @@
 import socket, select
 
 #
-# Microcontroller architecture is still undocumented.
+# Microcontroller architecture appears to be undocumented.
+# No disassembler is available.
 #
-# MEMORY MAP:
+# The datasheet only gives us the following information:
 #
-#   [0000-07FF] - Firmware
-#   [0800-0FFF] - Unmapped
-#   [1000-EFFF] - RAM
-#   [F800-FBFF] - Protected memory area
-#   [FC00-FCFF] - HW Registers
-#   [FD00-FFFF] - ROM
+#   == MEMORY MAP ==
+#
+#   [0000-07FF] - Firmware                  \
+#   [0800-0FFF] - Unmapped                  | User
+#   [1000-F7FF] - RAM                       /
+#   [F800-FBFF] - Secret memory area        \
+#   [FC00-FCFF] - HW Registers              | Privileged
+#   [FD00-FFFF] - ROM (kernel)              /
 #
 
 FIRMWARE = "fw.hex"
@@ -23,7 +26,8 @@ print("---------------------------------------------")
 print()
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect(('91.121.41.47', 20000))
+#s.connect(('91.121.41.47', 20000))
+s.connect(('127.0.0.1', 20000))
 
 print(":: Serial port connected.")
 print(":: Uploading firmware... ", end='')

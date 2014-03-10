@@ -33,7 +33,7 @@ print("---------------------------------------------")
 print()
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect(('91.121.41.47', 20000))
+s.connect(('127.0.0.1', 20000))
 
 print(":: Serial port connected.")
 print(":: Uploading firmware... ", end='')

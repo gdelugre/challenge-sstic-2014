@@ -1,5 +1,7 @@
 #!/usr/bin/env ruby
 
+require 'openssl'
+
 OPCODES = 
 {
     'mov.lo' => 1,
@@ -17,7 +19,9 @@ OPCODES =
     'jns' => 10,
     'jmp' => 11,
     'call' => 12,
+    'syscall' => 12,
     'ret' => 13,
+    'sysret' => 13,
     'ldr' => 14,
     'str' => 15,
 }
@@ -99,8 +103,13 @@ def encode_insn(pc, opcode, *args)
             insn |= (addr(args[0]) - pc) & 1023
         when 'jmp', 'call'
             insn |= (addr(args[0]) - pc) & 1023
+        when 'syscall'
+            insn |= (1 << 11) # syscall bit
+            insn |= (args[0].hex)
         when 'ret'
             insn |= reg(args[0])
+        when 'sysret'
+            insn |= (1 << 11)
         when 'ldr', 'str'
             insn |= reg(args[0]) << 8
             insn |= reg(args[1]) << 4
@@ -154,6 +163,7 @@ def assemble(lst, base = 0)
 end
 
 SECRET_RC4_KEY = "YeahRiscIsGood!"
+SUCCESS_STR = "Firmware successfully uploaded.\n"
 
 kind = ARGV.empty? ? 'fw' : 'rom'
 program = assemble(<<-LISTING) if kind == 'fw'
@@ -167,8 +177,8 @@ mov r2, #{SECRET_RC4_KEY.size.to_s(16)}
 call rc4_initialize
 
 mov r0, 0x1000
-mov r1, 0xF800
-mov r2, 0x400
+mov r1, goodbye_str
+mov r2, #{SUCCESS_STR.size.to_s(16)}
 call rc4_decrypt
 
 mov r0, goodbye_str
@@ -180,12 +190,7 @@ call print
 #mov r0, 0xF800
 #call print
 
-end:
-    xor r0, r0, r0
-    mov r1, 0xFC10
-    mov r2, 1
-    str r2, r1, r0
-    jmp end
+jmp halt
 
 #
 # rc4_initialize(void *state, char *key, int keylen);
@@ -300,14 +305,124 @@ rc4_cipher:
 # print(char *);
 #
 print:
+    syscall 1
+    ret r15
+
+halt:
+    syscall 2
+    jmp halt
+
+secret_key:
+    .data #{SECRET_RC4_KEY.inspect}, 0
+
+goodbye_str:
+    .data #{
+        rc4 = OpenSSL::Cipher::RC4.new.encrypt
+        rc4.key_len = SECRET_RC4_KEY.length 
+        rc4.key = SECRET_RC4_KEY
+        (rc4.update(SUCCESS_STR) + rc4.final).bytes.map{|c| c.to_s(16)}.join(",")
+    }, 0
+LISTING
+
+program = assemble(<<-LISTING, 0xFD00) if kind == 'rom'
+#
+# ROM code. Base is 0xFD00.
+#
+and r0, r0, r0
+jz reset
+
+mov r1, 1
+sub r0, r0, r1
+jz system_call_print
+
+sub r0, r0, r1
+jz system_call_halt
+
+mov r0, error_bad_syscall
+call print
+
+# halt(void);
+system_call_halt:
+    xor r0, r0, r0
+    mov r1, 0xFC10
+    mov r2, 1
+    str r2, r1, r0
+    jmp system_call_halt
+
+system_call_print:
+    mov r0, 0xFC20
+    call read_word
+    call print
+    sysret
+
+reset:
+    # Clear context
+    mov r0, 0xFC20
+    xor r1, r1, r1
+    mov r2, 36
+    call memset
+
+    # Set stack pointer
+    mov r0, 0xFC3A
+    mov r1, 0xEFFE
+    call write_word
+
+    sysret
+
+# read_word(int *);
+read_word:
+    mov r1, 1
+    mov r2, 0x100
+    ldr r3, r0, r1
+    sub r1, r1, r1
+    ldr r4, r0, r1
+    mul r4, r4, r2
+    or r0, r3, r4
+    ret r15
+
+# write_word(int *, int);
+write_word:
+    mov r2, 1
+    mov r3, 0x100
+    str r1, r0, r2
+    sub r2, r2, r2
+    div r1, r1, r3
+    str r1, r0, r2
+    ret r15
+
+# memset(void *, char, int);
+memset:
+    mov r3, 1
+    and r2, r2, r2  
+    jz memset_end
+    sub r2, r2, r3
+    str r1, r0, r2
+    jmp memset
+    memset_end:
+    ret r15
+    
+#
+# print(char *);
+#
+print:
     mov r14, r0
     mov r13, 0xFC00
+    mov r12, 0xF800
     xor r8, r8, r8
     mov r9, r8
     mov r10, 1
     xor r11, r11, r11
 
     print_loop: 
+        add r9, r14, r8
+        sub r9, r9, r12
+        js allowed_addr
+        add r9, r14, r8
+        sub r9, r9, r13
+        jns allowed_addr
+        jmp exit_bad_addr
+    allowed_addr:
+        xor r9, r9, r9
         ldr r9, r14, r8
         and r9, r9, r9
         jz print_ret
@@ -317,39 +432,17 @@ print:
     print_ret:
     ret r15
 
-secret_key:
-    .data #{SECRET_RC4_KEY.inspect}, 0
+exit_bad_addr:
+    mov r0, error_bad_addr
+    call print
+    jmp system_call_halt
 
-goodbye_str:
-    .data "Firmware successfully uploaded.\\n",0
-LISTING
+error_bad_addr:
+    .data "[ERROR] Unallowed address. CPU halted.\\n", 0
 
-program = assemble(<<-LISTING, 0xFD00) if kind == 'rom'
-#
-# ROM code. Base is 0xFD00.
-#
+error_bad_syscall:
+    .data "[ERROR] Undefined system call. CPU halted.\\n", 0
 
-and r0, r0, r0
-jz boot
-
-boot:
-    xor r0, r0, r0
-    mov r1, r0
-    mov r2, r0
-    mov r3, r0
-    mov r4, r0
-    mov r5, r0
-    mov r6, r0
-    mov r7, r0
-    mov r8, r0
-    mov r9, r0
-    mov r10, r0
-    mov r11, r0
-    mov r12, r0
-    mov r13, 0xEFFE 
-    mov r14, r0
-    xor r15, r15, r15
-    ret r15
 LISTING
 
 if kind == 'fw'

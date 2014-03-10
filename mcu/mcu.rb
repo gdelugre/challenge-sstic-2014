@@ -23,12 +23,9 @@ class Emulator
     ROM = File.binread('rom.bin').bytes
     ROM_REGION = (0xFD00 .. 0xFFFF)
     RC4_SECRET_KEY = "YeahRiscIsGood!"
-    rc4 = OpenSSL::Cipher::RC4.new.encrypt
-    rc4.key_len = RC4_SECRET_KEY.length
-    rc4.key = RC4_SECRET_KEY
 
     PROTECTED_MEMORY_REGION = (0xF800 .. 0xFBFF)
-    PROTECTED_MEMORY = (rc4.update(<<-PROTECTED.rjust(PROTECTED_MEMORY_REGION.size, "\x00")) + rc4.final).bytes
+    PROTECTED_MEMORY = <<-PROTECTED.rjust(PROTECTED_MEMORY_REGION.size, "\x00")
 Congratulations !
 Write an e-mail at this address to prove you just finished this challenge:
     #{EMAIL_SECRET}
@@ -42,6 +39,8 @@ Write an e-mail at this address to prove you just finished this challenge:
     UNMAPPED_REGION = (0x800 .. 0xFFF)
     UART_TX_REGISTER = 0xFC00
     HALT_CPU_REGISTER = 0xFC10
+    EXCEPTION_CONTEXT = 0xFC20
+
     EXCEPTION_MESSAGES = 
     {
         bad_insn: "Invalid instruction",
@@ -50,6 +49,7 @@ Write an e-mail at this address to prove you just finished this challenge:
         access_violation: "Memory access violation",
         watchdog: "Watchdog timer expired",
         div_by_zero: "Division by zero",
+        privileged: "Privileged instruction",
     }
     @@instances = []
 
@@ -91,32 +91,33 @@ Write an e-mail at this address to prove you just finished this challenge:
 
         @registers = Array.new(16, 0x0000)
         @pc = ROM_REGION.begin
+        @mode = :kernel
         @fault_addr = 0x0000
         @flags = { z:0, s:0 }
         @cpu_halted = false
 
+        begin
             begin
-                begin
-                    Timeout.timeout(MAX_EXECUTION_TIME) {
-                        while not @cpu_halted do
-                            opcode, args = parse_instruction(@pc)
-                            @pc = execute_insn(opcode, args)
-                        end
-                    }
-                rescue Timeout::Error
-                    exception(:watchdog)
-                end
-
-            rescue EmulatorException => exc
-                crash_report(exc)
-                raise
-
-            rescue Exception => e
-                STDERR.puts "[%s] Bug detected: %s" % [ Time.now.to_s, e.message.inspect ]
-                STDERR.puts "#{e.backtrace.join($/)}"
-                crash_report(e)
-                raise
+                Timeout.timeout(MAX_EXECUTION_TIME) {
+                    while not @cpu_halted do
+                        opcode, args = parse_instruction(@pc)
+                        @pc = execute_insn(opcode, args)
+                    end
+                }
+            rescue Timeout::Error
+                exception(:watchdog)
             end
+
+        rescue EmulatorException => exc
+            crash_report(exc)
+            raise
+
+        rescue Exception => e
+            STDERR.puts "[%s] Bug detected: %s" % [ Time.now.to_s, e.message.inspect ]
+            STDERR.puts "#{e.backtrace.join($/)}"
+            crash_report(e)
+            raise
+        end
     end
 
     private
@@ -136,6 +137,7 @@ Write an e-mail at this address to prove you just finished this challenge:
         fail if addr_end < addr_start
         
         access_range = Range.new(addr_start, addr_end)
+        exception(:access_violation, addr) if addr_start >= PROTECTED_MEMORY_REGION.begin and @mode != :kernel
         exception(:access_violation, addr) if overlap(UNMAPPED_REGION, access_range)
     end
 
@@ -145,6 +147,7 @@ Write an e-mail at this address to prove you just finished this challenge:
         fail if addr_end < addr_start
         
         access_range = Range.new(addr_start, addr_end)
+        exception(:access_violation, addr) if addr_start >= PROTECTED_MEMORY_REGION.begin and @mode != :kernel
         exception(:access_violation, addr) if overlap(UNMAPPED_REGION, access_range)
         exception(:access_violation, addr) if overlap(ROM_REGION, access_range)
     end
@@ -186,8 +189,10 @@ Write an e-mail at this address to prove you just finished this challenge:
             when 9 then 'div'
             when 10 then 'jcc'
             when 11 then 'jmp'
-            when 12 then 'call'
-            when 13 then 'ret'
+            when 12
+                ((insn[0] >> 3) & 1).zero? ? 'call' : 'syscall'
+            when 13
+                ((insn[0] >> 3) & 1).zero? ? 'ret' : 'sysret'
             when 14 then 'ldr'
             when 15 then 'str'
                 else exception(:bad_insn)
@@ -216,6 +221,9 @@ Write an e-mail at this address to prove you just finished this challenge:
                 args[-1] |= 0xfc00 # sign extend
             end
 
+        when 'syscall'
+            args.push(insn[1])
+
         when 'ret'
             args.push(insn[1] & 0xf)
 
@@ -237,6 +245,25 @@ Write an e-mail at this address to prove you just finished this challenge:
         end
     end
 
+    def save_context
+        @memory[EXCEPTION_CONTEXT, 2 * @registers.size] = @registers.pack('n*').unpack('C*')
+        flags = 0
+        flags |= 1 if @flags[:z]
+        flags |= 2 if @flags[:s]
+        @memory[EXCEPTION_CONTEXT + 2 * @registers.size, 2] = [ ((@pc + 2) & 0xffff) ].pack('n').unpack('C*')
+        @memory[EXCEPTION_CONTEXT + 2 * @registers.size + 2, 2] =  [ flags ].pack('n').unpack('C*')
+    end
+
+    def restore_context
+        @registers.replace @memory[EXCEPTION_CONTEXT, 2 * @registers.size].pack('C*').unpack('n*')
+        flags = @memory[EXCEPTION_CONTEXT + 2 * @registers.size + 2, 2].pack('C*').unpack('n')[0]
+        @flags[:z] = (flags & 1)
+        @flags[:s] = ((flags >> 1) & 1)
+        @mode = :user
+
+        @memory[EXCEPTION_CONTEXT + 2 * @registers.size, 2].pack('C*').unpack('n')[0]
+    end
+
     def execute_insn(opcode, args)
         STDERR.puts "Executing #{opcode} #{args.join(', ')}" if $DEBUG
         case opcode
@@ -245,6 +272,14 @@ Write an e-mail at this address to prove you just finished this challenge:
             when 'call'
                 @registers[15] = (@pc + 2) & 0xffff
                 return (@pc + args[0]) & 0xffff
+            when 'syscall'
+                save_context()
+                @registers[0] = args[0]
+                @mode = :kernel
+                return ROM_REGION.begin
+            when 'sysret'
+                exception(:privileged) if @mode != :kernel
+                return restore_context()
             when 'ret'
                 return @registers[args[0]]
             when 'jcc'
@@ -289,10 +324,9 @@ Write an e-mail at this address to prove you just finished this challenge:
                 byte = @registers[args[0]] & 0x00ff
                 memory_write((@registers[args[1]] + @registers[args[2]]) & 0xffff, [ byte ])
 
-            when 'bkpt'
-                exception(:bkpt)
         end
 
+        #STDERR.puts @registers.map.with_index{|r,i| "r#{i}:#{r.to_s(16)}"}.inspect if $DEBUG
         (@pc + 2) & 0xffff
     end
 
@@ -374,7 +408,7 @@ Write an e-mail at this address to prove you just finished this challenge:
    r4:#{"%04X" % @registers[4]}     r5:#{"%04X" % @registers[5]}    r6:#{"%04X" % @registers[6]}    r7:#{"%04X" % @registers[7]}
    r8:#{"%04X" % @registers[8]}     r9:#{"%04X" % @registers[9]}   r10:#{"%04X" % @registers[10]}   r11:#{"%04X" % @registers[11]}
   r12:#{"%04X" % @registers[12]}    r13:#{"%04X" % @registers[13]}   r14:#{"%04X" % @registers[14]}   r15:#{"%04X" % @registers[15]}
-   pc:#{"%04X" % @pc} fault_addr:#{"%04X" % @fault_addr} [S:#{@flags[:s]} Z:#{@flags[:z]}]
+   pc:#{"%04X" % @pc} fault_addr:#{"%04X" % @fault_addr} [S:#{@flags[:s]} Z:#{@flags[:z]}] Mode:#{@mode.to_s}
         REGS
     end
 end
