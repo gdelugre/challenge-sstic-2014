@@ -24,11 +24,29 @@ class Emulator
     ROM_REGION = (0xFD00 .. 0xFFFF)
     RC4_SECRET_KEY = "YeahRiscIsGood!"
 
-    PROTECTED_MEMORY_REGION = (0xF800 .. 0xFBFF)
-    PROTECTED_MEMORY = <<-PROTECTED.rjust(PROTECTED_MEMORY_REGION.size, "\x00")
-Congratulations !
-Write an e-mail at this address to prove you just finished this challenge:
-    #{EMAIL_SECRET}
+    PROTECTED_MEMORY_REGION = (0xF000 .. 0xFBFF)
+ #<<-PROTECTED.rjust(PROTECTED_MEMORY_REGION.size, "\x00").unpack('C*')
+    PROTECTED_MEMORY = <<-PROTECTED.unpack('C*').pack('C*').rjust(PROTECTED_MEMORY_REGION.size, "\x00").bytes
+        ▄              ▄
+        ▌▒█           ▄▀▒▌
+        ▌▒▒▀▄       ▄▀▒▒▒▐
+       ▐▄▀▒▒▀▀▀▀▄▄▄▀▒▒▒▒▒▐
+─────▄▄▀▒▒▒▒▒▒▒▒▒▒▒█▒▒▄█▒▐
+───▄▀▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▀██▀▒▌  WOW
+──▐▒▒▒▄▄▄▒▒▒▒▒▒▒▒▒▒▒▒▒▀▄▒▒▌
+──▌▒▒▐▄█▀▒▒▒▒▄▀█▄▒▒▒▒▒▒▒█▒▐   SUCH EXPLOIT
+─▐▒▒▒▒▒▒▒▒▒▒▒▌██▀▒▒▒▒▒▒▒▒▀▄▌
+─▌▒▀▄██▄▒▒▒▒▒▒▒▒▒▒▒░░░░▒▒▒▒▌    VERY CHALLENGING
+─▌▀▐▄█▄█▌▄▒▀▒▒▒▒▒▒░░░░░░▒▒▒▐
+▐▒▀▐▀▐▀▒▒▄▄▒▄▒▒▒▒▒░░░░░░▒▒▒▒▌   MUCH WIN
+▐▒▒▒▀▀▄▄▒▒▒▄▒▒▒▒▒▒░░░░░░▒▒▒▐
+─▌▒▒▒▒▒▒▀▀▀▒▒▒▒▒▒▒▒░░░░▒▒▒▒▌  HAPPY TIME
+─▐▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▐  
+──▀▄▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▄▒▒▒▒▌ <#{EMAIL_SECRET}>
+────▀▄▒▒▒▒▒▒▒▒▒▒▄▄▄▀▒▒▒▒▄▀
+───▐▀▒▀▄▄▄▄▄▄▀▀▀▒▒▒▒▒▄▄▀
+──▐▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▀▀
+
     PROTECTED
 
     MAX_CLIENT_BY_ADDR = 5
@@ -80,7 +98,7 @@ Write an e-mail at this address to prove you just finished this challenge:
         unless @client.closed?
             puts "[%s] Closing connection with %s (reason: %s)." % [ Time.now.to_s, self.remote_ip, reason.inspect ]
             @client.puts "CLOSING: #{reason}." unless reason.empty?
-            sleep 1.0
+            sleep 2.0
             @client.close
         end
         @@instances.delete(self)
@@ -271,7 +289,7 @@ Write an e-mail at this address to prove you just finished this challenge:
     end
 
     def execute_insn(opcode, args)
-        STDERR.puts "Executing #{opcode} #{args.join(', ')}" if $DEBUG
+        STDERR.puts "Executing #{@mode}@#{@pc.to_s(16)} #{opcode} #{args.join(', ')}" if $DEBUG
         @ticks += 1
 
         case opcode

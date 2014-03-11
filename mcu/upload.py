@@ -13,7 +13,7 @@ import socket, select
 #   [0000-07FF] - Firmware                  \
 #   [0800-0FFF] - Unmapped                  | User
 #   [1000-F7FF] - RAM                       /
-#   [F800-FBFF] - Secret memory area        \
+#   [F000-FBFF] - Secret memory area        \
 #   [FC00-FCFF] - HW Registers              | Privileged
 #   [FD00-FFFF] - ROM (kernel)              /
 #
@@ -26,8 +26,7 @@ print("---------------------------------------------")
 print()
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#s.connect(('91.121.41.47', 20000))
-s.connect(('127.0.0.1', 20000))
+s.connect(('91.121.41.47', 20000))
 
 print(":: Serial port connected.")
 print(":: Uploading firmware... ", end='')
@@ -49,7 +48,7 @@ while True:
             break
         resp += data
     else:
-        break
+        break 
 
 print(resp.decode("utf-8"))
 s.close()

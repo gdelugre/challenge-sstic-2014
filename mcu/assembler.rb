@@ -163,9 +163,9 @@ def assemble(lst, base = 0)
 end
 
 SECRET_RC4_KEY = "YeahRiscIsGood!"
-SUCCESS_STR = "Firmware successfully uploaded in 0x$$$$ CPU cycles.\n"
+SUCCESS_STR = "Firmware execution completed in $$$$$ CPU cycles.\n"
 
-kind = ARGV.empty? ? 'fw' : 'rom'
+kind = ARGV.empty? ? 'fw' : ARGV[0]
 program = assemble(<<-LISTING) if kind == 'fw'
 ###
 ### SSTIC 2014, remote firmware
@@ -192,7 +192,7 @@ mov r0, goodbye_str
 call strchr
 
 mov r1, r10
-call to_hex
+call to_dec
 
 mov r0, goodbye_str
 call print
@@ -308,17 +308,17 @@ rc4_cipher:
     jnz .rc4_cipher_loop
     ret r15 
 
-#
-# print(char *);
-#
-print:
-    syscall 1
-    ret r15
-
+# halt(void)
 halt:
-    syscall 2
+    syscall 1
     jmp halt
 
+# print(char *);
+print:
+    syscall 2
+    ret r15
+
+# read_tsc(int *);
 read_tsc:
     syscall 3
     ret r15
@@ -364,7 +364,7 @@ to_hex:
     and r2, r2, r5
     sub r3, r2, r6
     js .to_hex_num
-        mov r3, 0x41
+        mov r3, 0x37
         jmp .hex_write
     .to_hex_num:
         mov r3, 0x30
@@ -383,6 +383,32 @@ to_hex:
     .to_hex_end:
     ret r15
 
+# to_dec(char *, int)
+to_dec:
+    mov r4, 0x2710
+    mov r5, 0xa
+    xor r6, r6, r6
+    mov r7, 1
+    sub r0, r0, r7
+
+    .to_dec_next_digit:
+    add r0, r0, r7
+    div r2, r1, r4
+    mul r3, r2, r4
+    sub r1, r1, r3
+    div r4, r4, r5
+    mov r8, 0x20
+    xor r3, r3, r3
+    str r8, r0, r3
+    or r6, r6, r2
+    jz .to_dec_next_digit
+    mov r8, 0x30 
+    add r8, r8, r2
+    str r8, r0, r3
+    and r4, r4, r4
+    jnz .to_dec_next_digit
+    ret r15
+
 secret_key:
     .data #{SECRET_RC4_KEY.inspect}, 0
 
@@ -395,6 +421,64 @@ goodbye_str:
     }, 0
 LISTING
 
+program = assemble(<<-LISTING) if kind == 'xp'
+###
+### SSTIC 2014, remote exploit
+### 
+
+mov r0, 0x1000
+xor r1, r1, r1
+xor r2, r2, r2
+mov r3, 1 
+mov r4, 0x200
+
+loop:
+    and r0, r0, r0
+    str r1, r0, r2
+    add r2, r2, r3
+    sub r5, r4, r2
+    jnz loop
+
+mov r0, 0xF000
+syscall 3
+
+mov r0, 0x10F2
+mov r1, shellcode
+mov r2, 0x100
+call memcpy
+
+# Gives code execution at 0x10F2
+syscall 1
+
+memcpy:
+    mov r3, 1
+    .memcpy_loop:
+    sub r2, r2, r3
+    js .memcpy_end 
+    ldr r4, r1, r2 
+    str r4, r0, r2
+    jmp .memcpy_loop
+    .memcpy_end:
+    ret r15
+
+shellcode:
+    mov r0, 0xF008
+    mov r8, 0xFC00
+    mov r1, 0xBF8
+    xor r2, r2, r2
+    mov r4, 1
+
+    .sc_loop:
+        ldr r3, r0, r2
+        xor r9, r9, r9
+        str r3, r8, r9
+        add r2, r2, r4
+        sub r5, r1, r2
+        jnz .sc_loop
+
+.data 0, 0
+LISTING
+
 program = assemble(<<-LISTING, 0xFD00) if kind == 'rom'
 #
 # ROM code. Base is 0xFD00.
@@ -402,18 +486,21 @@ program = assemble(<<-LISTING, 0xFD00) if kind == 'rom'
 and r0, r0, r0
 jz reset
 
-mov r1, 1
-sub r0, r0, r1
-jz system_call_print
+mov r1, 3
+sub r2, r1, r0
+js unknown_syscall
 
-sub r0, r0, r1
-jz system_call_halt
+mov r2, 2
+mul r1, r0, r2
+sub r1, r1, r2
+mov r0, 0xF000
+add r0, r0, r1
+call read_word
+ret r0
 
-sub r0, r0, r1
-jz system_call_read_tsc
-
-mov r0, error_bad_syscall
-call print
+unknown_syscall:
+    mov r0, error_bad_syscall
+    call print
 
 # halt(void);
 system_call_halt:
@@ -450,6 +537,18 @@ system_call_read_tsc:
     sysret
 
 reset:
+    # Install syscall handlers
+    mov r4, 2
+    mov r1, system_call_halt
+    mov r0, 0xF000
+    call write_word
+    add r0, r0, r4
+    mov r1, system_call_print
+    call write_word
+    add r0, r0, r4
+    mov r1, system_call_read_tsc
+    call write_word
+    
     # Clear context
     mov r0, 0xFC20
     xor r1, r1, r1
@@ -460,7 +559,6 @@ reset:
     mov r0, 0xFC3A
     mov r1, 0xEFFE
     call write_word
-
     sysret
 
 # read_word(int *);
@@ -501,7 +599,7 @@ memset:
 print:
     mov r14, r0
     mov r13, 0xFC00
-    mov r12, 0xF800
+    mov r12, 0xF000
     xor r8, r8, r8
     mov r9, r8
     mov r10, 1
@@ -514,7 +612,7 @@ print:
         add r9, r14, r8
         sub r9, r9, r13
         jns .allowed_addr
-        jmp .exit_bad_addr
+        jmp exit_bad_addr
     .allowed_addr:
         xor r9, r9, r9
         ldr r9, r14, r8
@@ -532,7 +630,7 @@ exit_bad_addr:
     jmp system_call_halt
 
 error_bad_addr:
-    .data "[ERROR] Unallowed address. CPU halted.\\n", 0
+    .data "[ERROR] Printing at unallowed address. CPU halted.\\n", 0
 
 error_bad_syscall:
     .data "[ERROR] Undefined system call. CPU halted.\\n", 0
@@ -542,6 +640,9 @@ LISTING
 if kind == 'fw'
     puts hex = encode_hex(program)
     File.binwrite("fw.hex", hex)
+elsif kind == 'xp'
+    puts hex = encode_hex(program)
+    File.binwrite('exploit.hex', hex)
 else
     File.binwrite("rom.bin", program)
 end
