@@ -4,6 +4,8 @@
 #include "vm_bytecode.h"
 #include "syscalls.h"
 
+char **environ = NULL;
+
 int main(int argc, char *argv[])
 {
     vm_state *vstate;
@@ -14,7 +16,9 @@ int main(int argc, char *argv[])
     return vm_start(vstate);
 }
 
-_Noreturn void start(int argc, char *argv[])
+_Noreturn void _main_tramp(int argc, char *argv[])
 {
+    environ = &argv[argc + 1];
     sys_exit(main(argc, argv));
 }
+

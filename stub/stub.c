@@ -36,7 +36,7 @@ static inline int map_segment(struct elf_segment *segm)
     return 0;
 }
 
-static int exec_elf_program(int argc, char *argv[], struct elf_memory_map *map)
+static int exec_elf_program(long argc, char *argv[], struct elf_memory_map *map)
 {
     int i;
     entrypoint entry = (entrypoint)(map->entry);
@@ -47,7 +47,15 @@ static int exec_elf_program(int argc, char *argv[], struct elf_memory_map *map)
             return 1;
     }
 
-    return entry(argc, argv);
+    __asm__ __volatile__ (
+        "mov sp, %[av]\n\t"
+        "sub sp, sp, #8\n\t"
+        "str %[ac], [sp, #0]\n\t"
+        "mov x2, %[ep]\n\t"
+        "blr x2\n\t"
+        :: [av] "r" (argv), [ac] "r" (argc), [ep] "r" (entry)
+    );
+    //return entry(argc, argv);
 }
 
 typedef int (* entrypoint)(int, char**);
@@ -56,7 +64,7 @@ int main(int argc, char *argv[])
     return exec_elf_program(argc, argv, &memory_map);
 }
 
-_Noreturn void _start(int argc, char *argv[])
+_Noreturn void _main_tramp(int argc, char *argv[])
 {
     sys_exit(main(argc, argv));
 }

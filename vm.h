@@ -18,10 +18,11 @@ static void _vm_print(char *msg, size_t size)
 static void __attribute__((noinline)) vm_println (char *msg)
 {
     size_t length = 0;
-    while ( msg[length] != '\n' )
+    while ( msg[length] != '\n' && msg[length] != '\0' )
         length++;
 
-    _vm_print(msg, length+1);
+    _vm_print(msg, length);
+    _vm_print("\n", 1);
 }
 
 #ifdef DEBUG

@@ -32,7 +32,7 @@ dirs:
 
 compress:
 	$(UTILS_DIR)/compress_elf.rb $(TARGET) $(TMP_DIR)/elf_map.h
-	$(CC) $(CFLAGS_RELEASE) $(STUB_DIR)/stub.c $(LZ4_DIR)/lz4_reduced.c -I. -I$(TMP_DIR) -o $(TARGET).packed -Wl,-Ttext-segment=0x10000
+	$(CC) $(CFLAGS_RELEASE) $(STUB_DIR)/start.S $(STUB_DIR)/stub.c $(LZ4_DIR)/lz4_reduced.c -I. -I$(TMP_DIR) -o $(TARGET).packed -Wl,-Ttext-segment=0x10000
 	$(STRIP) $(TARGET).packed
 	$(OBJCOPY) -w -R '.note.gnu.build-id' -R .comment $(TARGET).packed
 	#rm -f *.o
@@ -40,6 +40,7 @@ compress:
 
 compile_release: util bytecode
 	$(COMPILE_RELEASE) $(SRC)
+	cp start.ASM start.s
 	for obj in *.s; do \
 		ruby armor.rb --enable "shuffle_blocks,shuffle_insns,junk,expand_insns" $$obj ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \

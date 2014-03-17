@@ -33,7 +33,7 @@ OPCODE_TABLE = {
     'READLN' => 22,
     'WRITEFILE' => 23,
 }
-
+  
 REGISTERS = %w{R0 R1 R2 R3 R4 R5 R6 PC}
 
 STRINGS = [

@@ -1,7 +1,8 @@
 #include <stddef.h>
-#include <sys/mman.h>
+//#include <sys/mman.h>
 
 #include "vm.h"
+#include "stdlib.h"
 #include "syscalls.h"
 #include "chacha.h"
 
@@ -389,8 +390,8 @@ static int vm_initialize_cache(vm_state *vstate)
     }
 
     /* Allocate VM memory cache. */
-    vstate->cache = (void *) sys_mmap(NULL, ROUND_PAGE(VM_PAGE_SIZE * VM_CACHE_SIZE), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
-    if ( vstate->cache == MAP_FAILED )
+    vstate->cache = _malloc(VM_PAGE_SIZE * VM_CACHE_SIZE);
+    if ( !vstate->cache )
         return -1;
 
     return 0;
@@ -699,8 +700,8 @@ static void vm_initialize_handlers(vm_state *vstate)
         }
 
         buffer_size = vm_get_register(state, 2);
-        buffer = (void *) sys_mmap(NULL, ROUND_PAGE(buffer_size), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
-        if ( buffer == MAP_FAILED )
+        buffer = _malloc(buffer_size);
+        if ( !buffer )
         {
             vm_stop(state, VM_STATUS_INTERNAL_ERROR);
             sys_close(fd);
@@ -710,12 +711,12 @@ static void vm_initialize_handlers(vm_state *vstate)
         if ( vm_read(state, vm_get_register(state, 1), buffer, buffer_size) != buffer_size )
         {
             vm_stop(state, VM_STATUS_MEMORY_FAULT);
-            sys_munmap(buffer, ROUND_PAGE(buffer_size));
+            _free(buffer, buffer_size);
             sys_close(fd);
         }
 
         sys_write(fd, buffer, buffer_size);
-        sys_munmap(buffer, ROUND_PAGE(buffer_size));
+        _free(buffer, buffer_size);
         sys_close(fd);
     });
 }
@@ -754,6 +755,9 @@ int vm_initialize(vm_memory *data, const size_t vm_size, vm_state **pstate)
     vstate->flags.running = 0;
     vstate->ticks = 0;
     _memcpy(vstate->vmem, data, vm_size);
+
+    //if ( !_getenv("HOME") )
+    //    return -2;
 
     *pstate = vstate;
     return 0;

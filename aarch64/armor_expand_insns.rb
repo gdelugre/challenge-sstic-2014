@@ -13,7 +13,13 @@ class CPU::AArch64
             [
                 -> (map) {
                     imm = map['Im'].to_i & 0xffff_ffff_ffff_ffff
-                    return InstructionPattern.new(self.zero_register(map['Rx']).to_s + "\n" + "add ${Rx}, ${Rx}, 1\n" * imm).make(map) if (0..8).include?(imm)
+                    if (0..58).include?(imm)
+                        return InstructionPattern.new(self.zero_register(map['Rx']).to_s + "\n" + "add ${Rx}, ${Rx}, 1\n" * imm).make(map) if (0..8).include?(imm) and rand(2) == 1
+                        return InstructionPattern.new(<<-CLZ).make(map)
+                            mov ${Rx}, #{(rand(0..63) | 32) << (58 - imm)}
+                            clz ${Rx}, ${Rx}
+                        CLZ
+                    end
                     return nil if imm.to_s(2).count('1') > 6
 
                     # Immediation move must be imm16
@@ -38,12 +44,12 @@ class CPU::AArch64
         InstructionPattern.new("add ${Rx}, ${Rx}, ${Xi}") =>
             [
                 -> (map) {
-                    return nil if self.is_register?(map['Xi'])
-                    rand_shift = rand(4..1024) & ~0xf
+                    return nil unless self.is_immediate?(map['Xi'])
+                    rand_value = rand(0 .. (4095 - map['Xi'].to_i))
 
                     InstructionPattern.new(<<-SUB).make(map)
-                        add ${Rx}, ${Rx}, ${Xi} + #{rand_shift}
-                        sub ${Rx}, ${Rx}, #{rand_shift}
+                        sub ${Rx}, ${Rx}, #{rand_value}
+                        add ${Rx}, ${Rx}, #{map['Xi'].to_i + rand_value}
                     SUB
                 }
             ],
@@ -74,6 +80,10 @@ class CPU::AArch64
 
     def self.ror64(x, shift)
         ((x >> shift) | (x << (64 - shift))) & 0xffff_ffff_ffff_ffff
+    end
+
+    def self.is_immediate?(str)
+        not (str =~ /^-?\d+$/).nil?
     end
 end
 
