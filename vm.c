@@ -198,21 +198,21 @@ void vm_stop(vm_state *state, int status)
     state->status = status;
 }
 
-static int vm_read_string(vm_state *state, vm_addr_t addr, char *buffer)
+static int vm_read_string(vm_state *state, vm_addr_t addr, char *buffer, size_t buffer_size)
 {
     char *page;
     size_t rem_size, nr_read = 0;
     int eos = 0;
     char c;
 
-    while ( !eos )
+    while ( nr_read < buffer_size && !eos )
     {
         page = (char *) vm_page_get(state, addr);
         if ( !page )
             return nr_read;
 
         rem_size = VM_PAGE_SIZE - VM_PAGE_OFFSET(addr);
-        while ( rem_size )
+        while ( nr_read < buffer_size && rem_size )
         {
             c = page[ VM_PAGE_OFFSET(addr) ];
             if ( c == '\0' )
@@ -223,6 +223,7 @@ static int vm_read_string(vm_state *state, vm_addr_t addr, char *buffer)
             }
 
             *buffer++ = c;
+            nr_read++;
             addr++;
             rem_size--;
         }
@@ -230,7 +231,7 @@ static int vm_read_string(vm_state *state, vm_addr_t addr, char *buffer)
         vm_page_put(state, page);
     }
 
-    return 0;
+    return nr_read;
 }
 
 static int vm_read_word(vm_state *state, vm_addr_t addr, vm_word_t *word)
@@ -357,6 +358,7 @@ static void vm_crash_report(vm_state *state)
         [VM_STATUS_MEMORY_FAULT] = "Memory fault.\n",
         [VM_STATUS_INTERNAL_ERROR] = "Internal error.\n",
         [VM_STATUS_INVALID_ARGUMENT] = "Invalid argument.\n",
+        [VM_STATUS_OUT_OF_MEMORY] = "Out of memory.\n",
     };
 
     vm_println(status_msg[state->status]);
@@ -395,6 +397,66 @@ static int vm_initialize_cache(vm_state *vstate)
         return -1;
 
     return 0;
+}
+
+static void vm_do_sys_open(vm_state *state)
+{
+    char filename[256];
+    int flags, mode, fd;
+
+    if ( !vm_read_string(state, vm_get_register(state, 1), filename, sizeof(filename)))
+    {
+        vm_stop(state, VM_STATUS_MEMORY_FAULT);
+        return;
+    }
+    
+    flags = vm_get_register(state, 2);
+    mode = vm_get_register(state, 3);
+    fd = sys_open(filename, flags, mode);
+    //printf("fd = %x\n", fd);
+    vm_set_register(state, 0, fd);
+}
+
+static void vm_do_sys_write(vm_state *state)
+{
+    int fd, result;
+    void *buffer;
+    size_t buffer_size;
+
+    fd = vm_get_register(state, 1);
+    //printf("sys_write to %x\n", fd);
+    buffer_size = vm_get_register(state, 3); 
+    if ( !buffer_size )
+    {
+        vm_stop(state, VM_STATUS_INVALID_ARGUMENT);
+        return;
+    }
+
+    buffer = _malloc(buffer_size);
+    if ( !buffer )
+    {
+        vm_stop(state, VM_STATUS_OUT_OF_MEMORY);
+        return;
+    }
+
+    if ( vm_read(state, vm_get_register(state, 2), buffer, buffer_size) != buffer_size )
+    {
+        vm_stop(state, VM_STATUS_MEMORY_FAULT);
+        _free(buffer, buffer_size);
+        sys_close(fd);
+    }
+
+    result = sys_write(fd, buffer, buffer_size);
+    vm_set_register(state, 0, result);
+    _free(buffer, buffer_size);
+}
+
+static void vm_do_sys_close(vm_state *state)
+{
+    int result;
+
+    result = sys_close(vm_get_register(state, 1));
+    vm_set_register(state, 0, result);
 }
 
 static void vm_initialize_handlers(vm_state *vstate)
@@ -626,6 +688,30 @@ static void vm_initialize_handlers(vm_state *vstate)
     });
     VM_INSTALL_HANDLER(vstate, VM_OP_BR, {
         vm_set_register(state, VM_IP_REGISTER, insn.addr);
+    });
+
+    VM_INSTALL_HANDLER(vstate, VM_OP_SYSCALL, {
+        vm_reg_t syscall_number;
+
+        syscall_number = vm_get_register(state, 0);
+        switch ( syscall_number )
+        {
+            case VM_SYS_OPEN:
+                vm_do_sys_open(state);
+                break;
+
+            case VM_SYS_WRITE:
+                vm_do_sys_write(state);
+                break;
+
+            case VM_SYS_CLOSE:
+                vm_do_sys_close(state);
+                break;
+
+            default:
+                vm_stop(state, VM_STATUS_INVALID_ARGUMENT);
+                return;
+        }
     });
 
     VM_INSTALL_HANDLER(vstate, VM_OP_PRINT, {

@@ -2,8 +2,9 @@
 
 exit(1) if ARGV.empty?
 
+NUM_PAGES = (1 << 10)
 OUTPUT_FILE = ARGV[0]
-PROGRAM_SIZE = 8192 * 64
+PROGRAM_SIZE = NUM_PAGES * 64
 
 LABELS = {}
 
@@ -32,6 +33,7 @@ OPCODE_TABLE = {
     'PRINT' => 21,
     'READLN' => 22,
     'WRITEFILE' => 23,
+    'SYSCALL' => 24,
 }
   
 REGISTERS = %w{R0 R1 R2 R3 R4 R5 R6 PC}
@@ -40,7 +42,7 @@ STRINGS = [
     "Please enter the decryption key: ",
     "Dumping payload...\n",
     "Wrong key.\n",
-    "payload.bin"
+    "payload.bin\x00"
 ]
 
 CONSTS =
@@ -52,7 +54,8 @@ CONSTS =
     'a'.ord,
     'f'.ord,
     4,
-    64
+    64,
+    2,
 ]
 
 @rodata_base = nil
@@ -61,8 +64,8 @@ CONSTS =
 @consts_size = 0
 
 CODE_BASE_ADDR = 64
-BSS_BASE_ADDR = 32 * 4096
-RODATA_BASE_ADDR = 64 * 4096
+BSS_BASE_ADDR = 1 * 4096
+RODATA_BASE_ADDR = 2 * 4096
 
 def encode_insn(opcode, *args)
     cond = 0
@@ -78,7 +81,7 @@ def encode_insn(opcode, *args)
     end
 
     if opcode == 'MOV'
-        if args.last =~ /[0-9]+/
+        if args.last =~ /^[0-9]+$/
             opcode = 'MOV_IMM19'
         elsif REGISTERS.include?(args.last)
             opcode = 'LDR'
@@ -97,7 +100,11 @@ def encode_insn(opcode, *args)
     when /^LDR/, /^STR/
         fail "bad ldr/str"if args.length > 2
         reg = REGISTERS.index(args[0])
-        addr = REGISTERS.index(args[1])
+        if REGISTERS.include?(args[1])
+            addr = REGISTERS.index(args[1])
+        else
+            addr = args[1].to_i
+        end
     when 'MOV_IMM19'
         reg = REGISTERS.index(args[0])
         addr = args[1].to_i
@@ -112,6 +119,7 @@ def encode_insn(opcode, *args)
         reg = REGISTERS.index(args[0])
     when 'BR'
         addr = LABELS[args[0]]
+        fail "Bad label '#{args[0]}'" unless addr
     when 'PRINT', 'READLN', 'WRITEFILE'
         addr = args[0].to_i
     end
@@ -210,8 +218,11 @@ install_consts(bytecode)
 #
 # SSTIC, crack-me assembly routine.
 #
-MOV R0, #{"Please enter the decryption key: ".size}
-PRINT #{str_addr("Please enter the decryption key: ")}
+MOV R0, 2
+MOV R1, 1
+MOV R2, #{str_addr("Please enter the decryption key: ")}
+MOV R3, #{"Please enter the decryption key: ".size}
+SYSCALL
 
 READLN #{BSS_BASE_ADDR}
 CMP R0, #{const_addr(16)}
@@ -248,22 +259,41 @@ next_char:
     BR check_chars
 
 dump:
-    MOV R0, #{"Dumping payload...\n".size}
-    PRINT #{str_addr("Dumping payload...\n")}
+    MOV R0, 2
+    MOV R1, 1
+    MOV R2, #{str_addr("Dumping payload...\n")}
+    MOV R3, #{"Dumping payload...\n".size}
+    SYSCALL
 
-    MOV R2, 64
-    XOR R1, R1
-    MOV R0, #{"payload.bin".size}
-    WRITEFILE #{str_addr("payload.bin")}
+    XOR R0, R0
+    MOV R1, #{str_addr("payload.bin\x00")}
+    MOV R2, 241
+    MOV R3, #{0666}
+    SYSCALL
+
+    MOV R1, R0
+    MOV R0, 2
+    XOR R2, R2
+    MOV R3, 64
+    SYSCALL
+
+    MOV R0, 3
+    SYSCALL
+
+    #MOV R2, 64
+    #XOR R1, R1
+    #WRITEFILE #{str_addr("payload.bin\x00")}
 
 BR end
 
 failure:
-    MOV R0, #{"Wrong key.\n".size}
-    PRINT #{str_addr("Wrong key.\n")}
-
+    MOV R0, 2
+    MOV R1, 1
+    MOV R2, #{str_addr("Wrong key.\n")}
+    MOV R3, #{"Wrong key.\n".size}
+    SYSCALL
 end:
-HALT
+    HALT
 ASM
 
 @bytecode[0x38,8] = [ 0x40 ].pack 'Q'

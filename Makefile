@@ -57,7 +57,7 @@ bytecode:
 	ruby make_bytecode.rb vm_bytecode.bin
 	$(UTILS_DIR)/chacha_crypt vm_bytecode.bin
 	$(UTILS_DIR)/bin_to_c_decl.rb vm_bytecode.bin vm_bytecode
-	rm -f vm_bytecode.bin
+	#rm -f vm_bytecode.bin
 
 dis:
 	$(OBJDUMP) -d $(TARGET) | most

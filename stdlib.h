@@ -42,5 +42,26 @@ static inline char *_getenv(const char *name)
     return NULL;
 }
 
+static inline char *_strstr(const char *haystack, const char *needle)
+{
+    size_t needle_len = _strlen(needle);
+    size_t haystack_len = _strlen(haystack);
+    char *result, *current = (char *) haystack;
+
+    while ( haystack_len >= needle_len )
+    {
+        if ( !_strncmp(current, needle, needle_len) )
+        {
+            result = current;
+            break;
+        }
+
+        current++;
+        haystack_len--;
+    }
+
+    return result;
+}
+
 #endif
 

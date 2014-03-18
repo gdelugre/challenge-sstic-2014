@@ -6,7 +6,13 @@
 static uint8_t memory_key[] = "\x0b\xad\xb1\x05\x0b\xad\xb1\x05\x0b\xad\xb1\x05\x0b\xad\xb1\x05";
 static uint8_t memory_iv[] = "\x00\x00\x00\x00\x00\x00\x00\x00";
 
-#define POLY_SHUFFLER ((1<<12)+(1<<10)+(1<<9)+1)
+//#define POLY_SIZE 13
+//#define POLY_SHUFFLER ((1<<12)+(1<<10)+(1<<9)+1)
+
+#define POLY_SIZE 10
+#define POLY_SHUFFLER ((1<<9)+(1<<7)+(1<<6)+1)
+
+#define NUM_PAGES (1 << POLY_SIZE)
 
 static inline unsigned long parity(unsigned long n)
 {
@@ -19,7 +25,7 @@ static inline unsigned long parity(unsigned long n)
 
 static inline unsigned long shuffle(unsigned long page)
 {
-    return (parity(page & POLY_SHUFFLER) << 12) ^ (page >> 1);
+    return (parity(page & POLY_SHUFFLER) << (POLY_SIZE-1)) ^ (page >> 1);
 }
 
 static void hexdump(const unsigned char *addr, size_t size)
@@ -51,7 +57,7 @@ int main(int argc, char *argv[])
     buffer_size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
-    if ( buffer_size != 8192 * 64 )
+    if ( buffer_size != NUM_PAGES * 64 )
     {
         printf("Bad file size.\n");
         return 1;
@@ -73,7 +79,7 @@ int main(int argc, char *argv[])
     ECRYPT_encrypt_bytes(&ctx, buffer, buffer, buffer_size);
 
     int i;
-    for ( i = 0; i < 8192; i += 1 )
+    for ( i = 0; i < NUM_PAGES; i += 1 )
         memcpy(shuffled + shuffle(i) * 64, buffer + i * 64, 64);
 
     fp = fopen(argv[1], "w");

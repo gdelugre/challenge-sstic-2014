@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
     return exec_elf_program(argc, argv, &memory_map);
 }
 
-_Noreturn void _init(int argc, char *argv[])
+_Noreturn void __init(int argc, char *argv[])
 {
     sys_exit(main(argc, argv));
 }

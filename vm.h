@@ -54,21 +54,26 @@ typedef unsigned long vm_time_t;
 typedef uint64_t vm_reg_t;
 typedef uint64_t vm_word_t;
 
+/* N = 13, TAPS = 13, 12, 10, 9 */
+//#define POLY_SIZE 13UL
+//#define POLY_SHUFFLER ((1<<12)+(1<<10)+(1<<9)+1)
+
+/* N = 10, TAPS = 9, 7, 6 */
+#define POLY_SIZE 10UL
+#define POLY_SHUFFLER ((1<<9)+(1<<7)+(1<<6)+1)
+
 #define VM_INVALID_ADDR ((vm_addr_t) -1)
 
 #define VM_PAGE_SHIFT 6UL
 #define VM_OFFSET_MASK ((1UL << VM_PAGE_SHIFT) - 1)
-#define VM_PAGE_MASK ((1UL << 13UL) - 1)
+#define VM_PAGE_MASK ((1UL << POLY_SIZE) - 1)
 #define VM_PAGE_SIZE (1UL << VM_PAGE_SHIFT)
 #define VM_PAGE_ALIGN(addr) (addr & ~VM_OFFSET_MASK)
 #define VM_PAGE(addr) ((vm_page_t) (addr >> VM_PAGE_SHIFT))
 #define VM_PAGE_OFFSET(addr) ((vm_off_t) (addr & VM_OFFSET_MASK))
 
 #define VM_MIN_ADDR ((vm_addr_t) 0UL)
-#define VM_MAX_ADDR ((vm_addr_t) ((1UL << 13UL) << VM_PAGE_SHIFT) - 1)
-
-
-#define POLY_SHUFFLER ((1<<12)+(1<<10)+(1<<9)+1)
+#define VM_MAX_ADDR ((vm_addr_t) ((1UL << POLY_SIZE) << VM_PAGE_SHIFT) - 1)
 
 static inline unsigned long parity(unsigned long n)
 {
@@ -81,7 +86,7 @@ static inline unsigned long parity(unsigned long n)
 
 static inline  unsigned long shuffle(vm_page_t vpage)
 {
-    return (parity(vpage & POLY_SHUFFLER) << 12) ^ (vpage >> 1);
+    return (parity(vpage & POLY_SHUFFLER) << (POLY_SIZE-1)) ^ (vpage >> 1);
 }
 
 #define VM_CACHE_SIZE 32
@@ -164,9 +169,16 @@ enum {
     VM_OP_PRINT,
     VM_OP_READLN,
     VM_OP_WRITEFILE,
-    VM_OP_READFILE,
+    VM_OP_SYSCALL,
     __NR_VM_OPCODES
 } VM_OPCODE;
+
+enum {
+    VM_SYS_OPEN,
+    VM_SYS_READ,
+    VM_SYS_WRITE,
+    VM_SYS_CLOSE,
+} VM_SYSCALL;
 
 typedef struct _vm_state {
     struct {
@@ -197,6 +209,7 @@ enum {
     VM_STATUS_MEMORY_FAULT,
     VM_STATUS_INTERNAL_ERROR,
     VM_STATUS_INVALID_ARGUMENT,
+    VM_STATUS_OUT_OF_MEMORY,
 } VM_STATUS;
 
 int vm_initialize(vm_memory *, size_t, vm_state **);

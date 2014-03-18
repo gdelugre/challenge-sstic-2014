@@ -6,16 +6,19 @@ class CPU::AArch64
                 -> (map) {
                     zero_reg = map['Xx'][0] == ?w ? 'wzr' : 'xzr'
                     rand_cond = self.condition_codes.sample
+                    opc = %w{csel csneg}.sample
                     if rand_cond == 'al'
-                        InstructionPattern.new("csel ${Xx}, #{zero_reg} , ${Xx}, al").make(map)
+                        InstructionPattern.new("#{opc} ${Xx}, #{zero_reg} , ${Xx}, al").make(map)
                     else
                         InstructionPattern.new(<<-CSEL).make(map)
-                            csel ${Xx}, #{zero_reg}, ${Xx}, #{rand_cond}
-                            csel ${Xx}, #{zero_reg}, ${Xx}, #{self.negate_condition(rand_cond)}
+                            #{opc} ${Xx}, #{zero_reg}, ${Xx}, #{rand_cond}
+                            #{opc} ${Xx}, #{zero_reg}, ${Xx}, #{self.negate_condition(rand_cond)}
                         CSEL
                     end
                 }
             ],
+
+        #InstructionPattern.new("add ${Xx}, ${Xx}, 1") => InstructionPattern.new("cinc ${Xx}, ${Xx}, al"),
 
         InstructionPattern.new("mov ${Rx}, ${Ry}") =>
             [
@@ -70,13 +73,29 @@ class CPU::AArch64
         InstructionPattern.new("add ${Rx}, ${Rx}, ${Xi}") =>
             [
                 -> (map) {
-                    return nil unless self.is_immediate?(map['Xi'])
-                    rand_value = rand(0 .. (4095 - map['Xi'].to_i))
+                    if map['Xi'] =~ /^:lo12:[^.]/
+                        rand_shift = rand(-127 .. 127) * 4
+                        if rand_shift > 0
+                            InstructionPattern.new(<<-SUB).make(map)
+                                add ${Rx}, ${Rx}, ${Xi}+#{rand_shift}
+                                sub ${Rx}, ${Rx}, #{rand_shift}
+                            SUB
+                        else
+                            InstructionPattern.new(<<-ADD).make(map)
+                                add ${Rx}, ${Rx}, ${Xi}-#{-rand_shift}
+                                add ${Rx}, ${Rx}, #{-rand_shift}
+                            ADD
+                        end
+                    elsif self.is_immediate?(map['Xi'])
+                        rand_value = rand(0 .. (4095 - map['Xi'].to_i))
 
-                    InstructionPattern.new(<<-SUB).make(map)
-                        sub ${Rx}, ${Rx}, #{rand_value}
-                        add ${Rx}, ${Rx}, #{map['Xi'].to_i + rand_value}
-                    SUB
+                        InstructionPattern.new(<<-SUB).make(map)
+                            sub ${Rx}, ${Rx}, #{rand_value}
+                            add ${Rx}, ${Rx}, #{map['Xi'].to_i + rand_value}
+                        SUB
+                    else
+                        return nil
+                    end
                 }
             ],
 
