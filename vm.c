@@ -10,9 +10,9 @@
  * Converts a VM address into a real address.
  * VM pages are 64-bytes long.
  *
- * vm_addr_t: [page: 18 .. 6] [offset: 5 .. 0] 
+ * vm_addr_t: [page: 11 .. 6] [offset: 5 .. 0] 
  *
- * VM page address is between [ 0, 8191 ].
+ * VM page address is between [ 0, 511 ].
  * VM offset is between [ 0, 63 ].
  */
 static void *vm_address_translate(vm_state *state, vm_addr_t addr)
@@ -96,6 +96,7 @@ static void *vm_page_read(vm_state *state, vm_addr_t vaddr)
     state->vmem_ctx.input[12] = VM_PAGE(vaddr);
     state->vmem_ctx.input[13] = (VM_PAGE(vaddr) >> 32UL);
 
+    vm_hexdump(data, VM_PAGE_SIZE);
     ECRYPT_decrypt_bytes(&state->vmem_ctx, data, cache, VM_PAGE_SIZE);
     vm_hexdump(cache, VM_PAGE_SIZE);
 

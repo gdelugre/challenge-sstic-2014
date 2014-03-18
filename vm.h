@@ -38,11 +38,33 @@ static void vm_hexdump(const void *addr, size_t size)
     } 
     printf("\n");
 }
-
-#define DBG_PRINT(msg) debug_write(msg "\n", sizeof(msg)+1)
 #else
 #define vm_print(...)
-#define vm_hexdump(addr, size)
+//#define vm_hexdump(addr, size)
+static void __attribute__((noinline)) vm_hexdump(const void *addr, size_t size)
+{
+    static char digits[3];
+    static const char table[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+    unsigned char c;
+    int i;
+    
+    for ( i = 0; i < size; i++ )
+    {
+        c = ((unsigned char *)addr)[i];
+        digits[0] = table[(c >> 4) & 0xf];
+        digits[1] = table[c & 0xf];
+        digits[2] = ' ';
+
+        _vm_print(digits, sizeof(digits));
+        if ( i % 16 == 15 )
+        {
+            digits[0] = '\n';
+            _vm_print(&digits, 1);
+        }
+    }
+    digits[0] = '\n';
+    _vm_print(&digits, 1);
+}
 #endif
 
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
