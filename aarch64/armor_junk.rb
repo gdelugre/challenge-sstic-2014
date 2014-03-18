@@ -14,6 +14,7 @@ class CPU::AArch64
         InstructionPattern.new('and ${Rx}, ${Rx}, ${Rx}'),
         InstructionPattern.new('bic ${Rx}, ${Rx}, xzr'),
         InstructionPattern.new('madd ${Rx}, ${R}, xzr, ${Rx}'),
+        InstructionPattern.new('csel ${Rx}, ${Rx}, ${R}, al'),
     ]
 end
 

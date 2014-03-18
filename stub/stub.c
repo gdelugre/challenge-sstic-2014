@@ -38,7 +38,7 @@ static inline int map_segment(struct elf_segment *segm)
 
 static int exec_elf_program(long argc, char *argv[], struct elf_memory_map *map)
 {
-    int i;
+    int i, result;
     entrypoint entry = (entrypoint)(map->entry);
 
     for ( i = 0; i < map->nr_segments; i++ )
@@ -53,9 +53,13 @@ static int exec_elf_program(long argc, char *argv[], struct elf_memory_map *map)
         "str %[ac], [sp, #0]\n\t"
         "mov x2, %[ep]\n\t"
         "blr x2\n\t"
-        :: [av] "r" (argv), [ac] "r" (argc), [ep] "r" (entry)
+        "mov %[res], x0\n\t"
+        : [res] "=r" (result)
+        : [av] "r" (argv), [ac] "r" (argc), [ep] "r" (entry)
+        : "x0", "x2"
     );
-    //return entry(argc, argv);
+
+    return result;
 }
 
 typedef int (* entrypoint)(int, char**);
@@ -64,7 +68,7 @@ int main(int argc, char *argv[])
     return exec_elf_program(argc, argv, &memory_map);
 }
 
-_Noreturn void _main_tramp(int argc, char *argv[])
+_Noreturn void _init(int argc, char *argv[])
 {
     sys_exit(main(argc, argv));
 }

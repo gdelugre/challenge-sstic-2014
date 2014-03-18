@@ -13,6 +13,8 @@ class CPU::AArch64 < CPU
         0 => GENERAL_REGISTERS[0],
     }
 
+    CONDITIONS = %w{eq ne cs cc mi pl vs vc hi ls ge lt gt le al}
+
     class Vector
         attr_reader :base, :repr
         def initialize(base, repr) 
@@ -154,8 +156,28 @@ class CPU::AArch64 < CPU
         REGISTERS.values.any? {|regset| regset.include?(name) }
     end
 
+    def self.is_immediate?(str)
+        not (str =~ /^-?\d+$/).nil?
+    end
+
     def self.general_registers(size = 64)
         GENERAL_REGISTERS[size]
+    end
+
+    def self.condition_codes
+        CONDITIONS
+    end
+
+    def self.negate_condition(cond)
+        {
+            'eq' => 'ne', 'ne' => 'eq',
+            'cs' => 'cc', 'cc' => 'cs',
+            'mi' => 'pl', 'pl' => 'mi',
+            'vs' => 'vc', 'vc' => 'vs',
+            'hi' => 'ls', 'ls' => 'hi',
+            'ge' => 'lt', 'lt' => 'ge',
+            'gt' => 'le', 'le' => 'gt',
+        }[cond]
     end
 
     def self.register_size(name)

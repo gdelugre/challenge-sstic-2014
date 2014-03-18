@@ -42,7 +42,7 @@ compile_release: util bytecode
 	$(COMPILE_RELEASE) $(SRC)
 	cp start.ASM start.s
 	for obj in *.s; do \
-		ruby armor.rb --enable "shuffle_blocks,shuffle_insns,junk,expand_insns" $$obj ; \
+		ruby armor.rb -c aarch64/armor.conf $$obj ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \
 	done
 	$(LINK) -Ttext-segment=$(TEXT_ADDR) -Tdata=$(DATA_ADDR) *.o -o $(TARGET)

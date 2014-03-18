@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'optparse'
+require 'yaml'
 
 class OptParser
     BANNER = <<-USAGE
@@ -14,8 +15,8 @@ Usage: #{$0} <assembly-file> -e <pass> [-o output]
                 options[:output] = o
             end
 
-            opts.on("-e", "--enable <pass1,pass2,...>", "Choose armoring pass to enable.") do |p|
-                options[:passes] += p.split(',')
+            opts.on("-c", "--config <file>", "Load configuration file.") do |c|
+                options[:cfg_file] = c
             end
 
             opts.on_tail("-h", "Show this message") do
@@ -26,10 +27,7 @@ Usage: #{$0} <assembly-file> -e <pass> [-o output]
     end
 
     def self.parse(args)
-        options = 
-        {
-            :passes => []
-        }
+        options = {}
         self.parser(options).parse!(args)
         options
     end
@@ -67,7 +65,7 @@ class CPU
         def make(regs = {})
             map = regs.dup
             @patterns.map { |pattern|
-                insn = pattern.gsub(/\${([RIX])(\w?)}/) { |token|
+                insn = pattern.gsub(/\${([CRIX])(\w?)}/) { |token|
                     case $1
                     when 'X'
                         fail "Unspecified argument" if $2.empty? or not map.include?($1+$2)
@@ -83,6 +81,12 @@ class CPU
                         else
                             map[$1+$2] ||= @cpu.general_registers.sample
                         end
+                    when 'C'
+                        if $2.empty?
+                            @cpu.condition_codes.sample
+                        else
+                            map[$1+$2] ||= @cpu.condition_codes.sample
+                        end
                     end
                 }
                 "\t#{insn}" 
@@ -94,10 +98,12 @@ class CPU
             %r{^\t#{
                 backrefs = []
                 @patterns[0]
+                    .gsub('[','\\[').gsub(']','\\]')      # escape brackets
                     .gsub(/\s+/,"\\s+")                   # expand white characters
-                    .gsub(/\${([RIX])(\w?)}/) { |token|   # expand tokens
+                    .gsub(/\${([CRIX])(\w?)}/) { |token|   # expand tokens
                         if $2.empty?
                             case $1
+                            when 'C' then "(#{@cpu.condition_codes.join('|')})"
                             when 'R' then "(#{@cpu.general_registers.join('|')})"
                             when 'I' then "(#?-?\\d+)"
                             when 'X' then "([^ ]+)"
@@ -107,6 +113,7 @@ class CPU
                         else
                             backrefs.push($1+$2)
                             case $1
+                            when 'C' then "(?<#{$1}#{$2}>#{@cpu.condition_codes.join('|')})"
                             when 'R' then "(?<#{$1}#{$2}>#{@cpu.general_registers.join('|')})"
                             when 'I' then "(?<#{$1}#{$2}>#?-?\\d+)"
                             when 'X' then "(?<#{$1}#{$2}>[^ ]+)"
@@ -312,6 +319,7 @@ class ArmorPass
     end
 
     def self.each_defined(&b); @defined.each(&b) end
+    def self.get(name); @defined.find{|pass| pass.name == name} end
 
     def apply(_assembly)
         raise NotImplementedError
@@ -328,10 +336,6 @@ if ARGV.empty?
     exit 1
 end
 
-if @options[:passes].empty?
-    STDERR.puts "Warning: no pass enabled."
-end
-
 assembly = AssemblyFileParser.new(CPU::AArch64, ARGV[0])
 
 #p CPU::AArch64::NOOP.last.to_re
@@ -346,11 +350,15 @@ assembly = AssemblyFileParser.new(CPU::AArch64, ARGV[0])
 #p $~
 #exit
 
-ArmorPass.each_defined do |pass|
-    if @options[:passes].include?(pass.name)
-        puts "[+] Applying pass '#{pass.name}' on #{ARGV[0]}..."
-        pass.apply(assembly) 
+config = YAML.load File.read(@options[:cfg_file] || "aarch64/armor.conf")
+$DEBUG = true if config['general']['debug']
+
+while not (remaining = config['modules'].select{|mod, cfg| cfg['enabled'] && cfg['passes'] > 0}).empty?
+    remaining.each do |pass, cfg|
+        puts "[+] Applying pass '#{pass}' on #{ARGV[0]}..."
+        ArmorPass.get(pass).apply(assembly) 
         assembly.flush!
+        cfg['passes'] -= 1
     end
 end
 

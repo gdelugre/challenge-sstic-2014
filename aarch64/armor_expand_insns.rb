@@ -1,12 +1,38 @@
 class CPU::AArch64
     EXPAND_PATTERNS =
     {
+        InstructionPattern.new("mov ${Xx}, 0") =>
+            [
+                -> (map) {
+                    zero_reg = map['Xx'][0] == ?w ? 'wzr' : 'xzr'
+                    rand_cond = self.condition_codes.sample
+                    if rand_cond == 'al'
+                        InstructionPattern.new("csel ${Xx}, #{zero_reg} , ${Xx}, al").make(map)
+                    else
+                        InstructionPattern.new(<<-CSEL).make(map)
+                            csel ${Xx}, #{zero_reg}, ${Xx}, #{rand_cond}
+                            csel ${Xx}, #{zero_reg}, ${Xx}, #{self.negate_condition(rand_cond)}
+                        CSEL
+                    end
+                }
+            ],
+
         InstructionPattern.new("mov ${Rx}, ${Ry}") =>
             [
-                InstructionPattern.new(<<-CODE)
+                InstructionPattern.new(<<-CODE),
                     mvn ${Rx}, ${Ry}
                     mvn ${Rx}, ${Rx}
-                 CODE
+                CODE
+
+                InstructionPattern.new(<<-CODE),
+                    eor ${Rx}, ${Rx}, ${Ry}
+                    eor ${Ry}, ${Ry}, ${Rx}
+                    eor ${Rx}, ${Ry}, ${Rx}
+                    mov ${Ry}, ${Rx}
+                CODE
+
+                InstructionPattern.new("and ${Rx}, ${Ry}, ${Ry}"),
+                InstructionPattern.new("orr ${Rx}, ${Ry}, ${Ry}"),
             ],
 
         InstructionPattern.new("mov ${Rx}, ${Im}") =>
@@ -54,6 +80,18 @@ class CPU::AArch64
                 }
             ],
 
+       InstructionPattern.new("str ${Xx}, [${Xb},${Xi}]") =>
+            -> (map) {
+                return nil unless self.is_immediate?(map['Xi']) or map['Xi'][0] == ?-
+                offset = map['Xi'].to_i
+                rand_shift = rand(0..(offset / 8)) * 8
+                InstructionPattern.new(<<-STR).make(map)
+                    add ${Xb}, ${Xb}, #{offset - rand_shift}    
+                    str ${Xx}, [${Xb},#{rand_shift}]
+                    sub ${Xb}, ${Xb}, #{offset - rand_shift}
+                STR
+            },
+
        InstructionPattern.new("ret") => InstructionPattern.new("br x30"),
        #InstructionPattern.new("br ${Rx}") => InstructionPattern.new("ret ${Rx}"),
     }
@@ -82,13 +120,10 @@ class CPU::AArch64
         ((x >> shift) | (x << (64 - shift))) & 0xffff_ffff_ffff_ffff
     end
 
-    def self.is_immediate?(str)
-        not (str =~ /^-?\d+$/).nil?
-    end
 end
 
 #
-# 
+# Replace code using instruction patterns.
 #
 class ExpandCode < ArmorPass
     NAME = 'expand_insns'
@@ -100,9 +135,10 @@ class ExpandCode < ArmorPass
                 assembly.cpu::EXPAND_PATTERNS.each_pair do |pattern, transform|
                     if match = pattern.match(insn)
                         map = match_to_hash(match)
-                        puts insn
+                        puts insn if $DEBUG
                         replace = expand_insn(transform, map)
-                        p replace
+                        p replace if $DEBUG
+                        break
                     end
                 end if rand(2).zero?
                 

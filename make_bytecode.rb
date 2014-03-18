@@ -37,9 +37,9 @@ OPCODE_TABLE = {
 REGISTERS = %w{R0 R1 R2 R3 R4 R5 R6 PC}
 
 STRINGS = [
-    "Please enter the password: ",
+    "Please enter the decryption key: ",
     "Dumping payload...\n",
-    "Wrong password.\n",
+    "Wrong key.\n",
     "payload.bin"
 ]
 
@@ -210,8 +210,8 @@ install_consts(bytecode)
 #
 # SSTIC, crack-me assembly routine.
 #
-MOV R0, #{"Please enter the password: ".size}
-PRINT #{str_addr("Please enter the password: ")}
+MOV R0, #{"Please enter the decryption key: ".size}
+PRINT #{str_addr("Please enter the decryption key: ")}
 
 READLN #{BSS_BASE_ADDR}
 CMP R0, #{const_addr(16)}
@@ -259,8 +259,8 @@ dump:
 BR end
 
 failure:
-    MOV R0, #{"Wrong password.\n".size}
-    PRINT #{str_addr("Wrong password.\n")}
+    MOV R0, #{"Wrong key.\n".size}
+    PRINT #{str_addr("Wrong key.\n")}
 
 end:
 HALT

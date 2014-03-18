@@ -16,7 +16,7 @@ int main(int argc, char *argv[])
     return vm_start(vstate);
 }
 
-_Noreturn void _main_tramp(int argc, char *argv[])
+_Noreturn void _init(int argc, char *argv[])
 {
     environ = &argv[argc + 1];
     sys_exit(main(argc, argv));
