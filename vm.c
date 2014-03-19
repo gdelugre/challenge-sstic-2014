@@ -323,6 +323,7 @@ int vm_execute(vm_state *state)
                 insn.addr,
                 insn.cond);
 
+        vm_println("set ip");
         ip += sizeof(vm_insn_t);
         vm_set_register(state, VM_IP_REGISTER, ip);
 
@@ -342,6 +343,7 @@ int vm_execute(vm_state *state)
         if ( insn.cond == VM_COND_IS_HIGHER && !state->flags.higher )
             continue;
 
+        vm_println("execute handler");
         /* Execute the opcode handler. */
         state->handlers[insn.opcode](state, insn);
     }

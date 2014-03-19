@@ -27,25 +27,28 @@ class CPU::AArch64 < CPU
     end
 
     class Pointer
-        attr_reader :base, :offset, :preinc
-        def initialize(base, offset = 0, preinc = false)
+        attr_reader :base, :offset, :preinc, :ext
+        def initialize(base, offset = 0, ext = nil, preinc = false)
             @base, @offset = base, offset
             @preinc = preinc
+            @ext = ext
         end
 
         def to_s
             str = ""
-            if @offset == "0"
+            if @offset == "0" and ext.nil?
                 str += "[#{@base}]"
             else
-                str += "[#{@base},#{@offset}]"
+                str += "[#{@base},#{@offset}"
+                str += ",#{@ext}" if @ext
+                str += "]"
             end
             str += "!" if @preinc
             str
         end
 
-        def self.[](base, offset = 0, preinc = false)
-            self.new(base, offset, preinc)
+        def self.[](base, offset = 0, ext = nil, preinc = false)
+            self.new(base, offset, ext, preinc)
         end
     end
 
@@ -145,8 +148,9 @@ class CPU::AArch64 < CPU
 
     def self.parse_operand(operand)
         case operand
-        when /\[(\w+)\](!?)/ then Pointer[$1, '0', (not $2.empty?)]
-        when /\[([^,]+),([^,]+)\](!?)/ then Pointer[$1, $2, (not $3.empty?)]
+        when /\[(\w+)\](!?)/ then Pointer[$1, '0', nil, (not $2.empty?)]
+        when /\[([^,]+),([^,]+)\](!?)/ then Pointer[$1, $2, nil, (not $3.empty?)]
+        when /\[([^,]+),([^,]+),([^,]+)\](!?)/ then Pointer[$1, $2, $3, (not $4.empty?)]
         when /{(\w+)\.(\w+)}/ then Vector.new($1, $2)
         else operand
         end

@@ -10,12 +10,14 @@
 #include "syscalls.h"
 #include "string.h"
 
+__attribute__((noinline)) 
 static void _vm_print(char *msg, size_t size)
 {
     sys_write(2, msg, size);
 }
 
-static void __attribute__((noinline)) vm_println (char *msg)
+__attribute__((noinline)) 
+static void vm_println (char *msg)
 {
     size_t length = 0;
     while ( msg[length] != '\n' && msg[length] != '\0' )
@@ -41,7 +43,8 @@ static void vm_hexdump(const void *addr, size_t size)
 #else
 #define vm_print(...)
 //#define vm_hexdump(addr, size)
-static void __attribute__((noinline)) vm_hexdump(const void *addr, size_t size)
+__attribute__((noinline)) 
+static void vm_hexdump(const void *addr, size_t size)
 {
     static char digits[3];
     static const char table[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
