@@ -74,7 +74,7 @@ class CPU::AArch64
             [
                 -> (map) {
                     if map['Xi'] =~ /^:lo12:[^.]/
-                        rand_shift = rand(-127 .. 127) * 4
+                        rand_shift = rand(1 .. 12) * 4
                         if rand_shift > 0
                             InstructionPattern.new(<<-SUB).make(map)
                                 add ${Rx}, ${Rx}, ${Xi}+#{rand_shift}

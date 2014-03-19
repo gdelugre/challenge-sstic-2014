@@ -47,7 +47,7 @@ compile_release: util bytecode
 	done
 	$(LINK) -Ttext-segment=$(TEXT_ADDR) -Tdata=$(DATA_ADDR) *.o -o $(TARGET)
 	rm -f *.o
-	$(STRIP) $(TARGET)
+	#$(STRIP) $(TARGET)
 
 compile_debug: util bytecode
 	$(COMPILE_DEBUG) $(SRC) -o $(TARGET)
