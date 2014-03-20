@@ -42,13 +42,13 @@ compile_release: util bytecode
 	$(COMPILE_RELEASE) $(SRC)
 	cp start.ASM start.s
 	for obj in *.s; do \
-		cp $$obj $$obj.orig ; \
+		cp $$obj $(TMP_DIR)/$$obj.orig ; \
 		ruby armor.rb -c aarch64/armor.conf $$obj ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \
 	done
 	$(LINK) -Ttext-segment=$(TEXT_ADDR) -Tdata=$(DATA_ADDR) *.o -o $(TARGET)
 	rm -f *.o
-	#$(STRIP) $(TARGET)
+	$(STRIP) $(TARGET)
 
 compile_debug: util bytecode
 	$(COMPILE_DEBUG) $(SRC) -o $(TARGET)
