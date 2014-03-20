@@ -42,6 +42,7 @@ compile_release: util bytecode
 	$(COMPILE_RELEASE) $(SRC)
 	cp start.ASM start.s
 	for obj in *.s; do \
+		cp $$obj $$obj.orig ; \
 		ruby armor.rb -c aarch64/armor.conf $$obj ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \
 	done

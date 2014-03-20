@@ -365,4 +365,3 @@ end
 File.open(@options[:output] || ARGV[0], 'wb') do |fd|
     fd.write(assembly.dump)
 end
-

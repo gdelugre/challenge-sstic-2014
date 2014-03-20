@@ -111,7 +111,7 @@ class CPU::AArch64 < CPU
             when /c?cm[p|n]/, /cin[cv]/, 'cneg', 'tst', /^cb.*/, /^cs.*/, /^tb.*/
                 used.push 'cpsr'
                 start = 0
-            when /^st.*/
+            when /^st.*/, 'movk'
                 start = 0
             when /^ldx?p/
                 start = 2
