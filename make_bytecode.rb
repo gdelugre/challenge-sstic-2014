@@ -8,297 +8,454 @@ PROGRAM_SIZE = NUM_PAGES * 64
 
 LABELS = {}
 
-OPCODE_TABLE = {
-    'HALT' => 0,
-    'NONE' => 1,
-    'LDRB' => 2,
-    'LDRH' => 3,
-    'LDRW' => 4,
-    'LDR' => 5,
-    'STRB' => 6,
-    'STRH' => 7,
-    'STRW' => 8,
-    'STR' => 9,
-    'MOV_IMM19' => 10,
-    'SHL' => 11,
-    'SHR' => 12,
-    'ADD' => 13,
-    'SUB' => 14,
-    'AND' => 15,
-    'OR' => 16,
-    'XOR' => 17,
-    'NOT' => 18,
-    'CMP' => 19,
-    'BR' => 20,
-    'PRINT' => 21,
-    'READLN' => 22,
-    'WRITEFILE' => 23,
-    'SYSCALL' => 24,
-}
+OPCODE_TABLE = %w{
+    movi 
+    ori 
+    ldr 
+    ldrh 
+    ldrb 
+    str 
+    strh 
+    strb 
+    bcc 
+    not 
+    xor 
+    or 
+    and 
+    lsl 
+    lsr 
+    asr 
+    rol 
+    ror 
+    add 
+    sub 
+    mul 
+    div 
+    inc 
+    dec 
+    push 
+    pop 
+    ret 
+    nop 
+    hlt 
+    sys
+    par
+}.each_with_index.to_h
   
-REGISTERS = %w{R0 R1 R2 R3 R4 R5 R6 PC}
-
-STRINGS = [
-    "Please enter the decryption key: ",
-    "Dumping payload...\n",
-    "Wrong key.\n",
-    "payload.bin\x00"
-]
-
-CONSTS =
-[
-    1,
-    16,
-    '0'.ord,
-    '9'.ord,
-    'a'.ord,
-    'f'.ord,
-    4,
-    64,
-    2,
-]
-
-@rodata_base = nil
-@rodata_size = 0
-@consts_base = nil
-@consts_size = 0
+REGISTERS = %w{R0 R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11 R12 R13 R14 R15}
+CONDITIONS = %w{al nev eqz neqz ltz gtz ltez gtez}
 
 CODE_BASE_ADDR = 64
-BSS_BASE_ADDR = 1 * 4096
-RODATA_BASE_ADDR = 2 * 4096
+STACK_BASE_ADDR = 0x2000
+PAYLOAD_FILE = 'mcu_programmer.zip'
+PAYLOAD_BASE_ADDR = 0x8000
+PAYLOAD_SIZE = 0x2000
+
+UNPADDED_PAYLOAD_SIZE = File.size(PAYLOAD_FILE)
+fail "Payload is too big!" if UNPADDED_PAYLOAD_SIZE > PAYLOAD_SIZE
+PAYLOAD = File.binread(PAYLOAD_FILE).ljust(PAYLOAD_SIZE, "\x00")
+PAYLOAD[UNPADDED_PAYLOAD_SIZE,1] = "\x80".force_encoding('binary')
+
+def get_insn_size(opcode)
+    case opcode.downcase
+    when 'mov' then 8
+    when 'movr', 'movi', 'ori', /^ld.*/, /^st.*/, /^bl?\..*/ then 4
+    else 2
+    end
+end
+
+def reg(arg); REGISTERS.index(arg) & 0xf end
+def cond(arg); CONDITIONS.index(arg) & 7 end
+def addr(label); LABELS[label] or fail("Bad label #{label.inspect}") end
 
 def encode_insn(opcode, *args)
-    cond = 0
-    if opcode[-2,2] == "EQ"
-        cond = 1
-        opcode = opcode[0..-3]
-    elsif opcode[-2,2] == "LO"
-        cond = 2
-        opcode = opcode[0..-3]
-    elsif opcode[-2,2] == "HI"
-        cond = 3
-        opcode = opcode[0..-3]
+    opcode.downcase!
+
+    if opcode == 'mov'
+        value = LABELS[args[1]] || args[1].hex
+        return encode_insn("movi", args[0], ((value >> 16) & 0xffff).to_s(16)) + 
+            encode_insn("ori", args[0], ((value & 0xffff).to_s(16)))
+    elsif opcode == 'movr'
+        return encode_insn("xor", args[0], args[0]) +
+            encode_insn("or", args[0], args[1])
     end
 
-    if opcode == 'MOV'
-        if args.last =~ /^[0-9]+$/
-            opcode = 'MOV_IMM19'
-        elsif REGISTERS.include?(args.last)
-            opcode = 'LDR'
-            args[1] = REGISTERS.index(args[1]) * 8
-        else
-            fail "Bad MOV : #{args.inspect}"
-        end
+    if opcode =~ /^bl?\..*/
+        opc = OPCODE_TABLE['bcc']
+    else
+        fail "Bad opcode #{opcode}" unless OPCODE_TABLE.include?(opcode)
+        opc = OPCODE_TABLE[opcode]
     end
-
-    fail "Bad opcode #{opcode}" unless OPCODE_TABLE.include?(opcode)
-    opc = OPCODE_TABLE[opcode]
-    reg = 0
-    addr = 0
 
     case opcode
-    when /^LDR/, /^STR/
-        fail "bad ldr/str"if args.length > 2
-        reg = REGISTERS.index(args[0])
-        if REGISTERS.include?(args[1])
-            addr = REGISTERS.index(args[1])
+    when 'movi', 'ori'
+        rd = reg(args[0])
+        imm = args[1].hex
+        [ opc | (rd << 8) | (imm << 12) ].pack 'V'
+    when /^ld.*/, /^st.*/
+        rd = reg(args[0])
+        rs = reg(args[1])
+        off = args[2].to_i
+        [ opc | (rd << 8) | (rs << 12) | (off << 16) ].pack 'V'
+    when /^b.*/
+        link = (opcode[1] == 'l') ? 1 : 0
+        start = 2 + link
+        rc = reg(args[0])
+        cond = cond(opcode[start .. -1])
+        dest = addr(args[1]) 
+        [ opc | (link << 8) | (rc << 9) | (cond << 13) | (dest << 16) ].pack 'V'
+    when 'not', 'inc', 'dec', 'push', 'pop'
+        rd = reg(args[0])
+        [ opc | (rd << 8) ].pack 'v'
+    when 'xor', 'or', 'and', 'add', 'sub', 'mul', 'div', 'lsl', 'asr', 'lsr', 'rol', 'ror', 'par'
+        rd = reg(args[0])
+        rs = reg(args[1])
+        [ opc | (rd << 8) | (rs << 12) ].pack 'v'
+    when 'sys', 'ret', 'nop', 'hlt'
+        [ opc ].pack 'v' 
+    else
+        fail "Do not know how to assemble #{opcode}"
+    end
+end
+
+def encode_data(items)
+    data = ''
+
+    items.each do |item|
+        if item[0] == '"' or item[0] == "'" and item[0] == item[-1]
+            data += item[1..-2].gsub('\\\\','\\').gsub('\\"','"').gsub("\\'", "'").gsub("\\n", "\n")
+        elsif LABELS.include?(item)
+            data += LABELS[item].pack('n')
         else
-            addr = args[1].to_i
-        end
-    when 'MOV_IMM19'
-        reg = REGISTERS.index(args[0])
-        addr = args[1].to_i
-    when 'SHL', 'SHR', 'ADD', 'SUB', 'AND', 'OR', 'XOR', 'CMP'
-        reg = REGISTERS.index(args[0])
-        if REGISTERS.include?(args[1])
-            addr = REGISTERS.index(args[1]) * 8
-        else
-            addr = args[1].to_i
-        end
-    when 'NOT'
-        reg = REGISTERS.index(args[0])
-    when 'BR'
-        addr = LABELS[args[0]]
-        fail "Bad label '#{args[0]}'" unless addr
-    when 'PRINT', 'READLN', 'WRITEFILE'
-        addr = args[0].to_i
+            data += item.hex.chr
+        end 
     end
-    
-    [ opc | (reg << 8) | (addr << 11) | (cond << 30) ].pack 'V'
+    data
 end
 
-def install_rodata(bytecode)
-    @rodata_base = RODATA_BASE_ADDR
-
-    rodata = STRINGS.join('') 
-    bytecode[@rodata_base, rodata.size] = rodata
-
-    @rodata_size = rodata.size
-end
-
-def install_consts(bytecode)
-    @consts_base = @rodata_base + @rodata_size 
-    consts = CONSTS.pack 'Q*'
-    bytecode[@consts_base, consts.size] = consts
-
-    @consts_size = consts.size
-end
-
-def reg_addr(r)
-    REGISTERS.index(r) * 8
-end
-
-def str_addr(string)
-    fail unless STRINGS.include?(string)
-
-    base = RODATA_BASE_ADDR 
-    STRINGS.each do |str|
-        break if str == string
-        base += str.size
-    end
-
-    base.to_s
-end
-
-def const_addr(c)
-    fail unless CONSTS.include?(c)
-
-    base = @consts_base
-    CONSTS.each do |co|
-        break if co == c
-        base += 8
-    end
-
-    base.to_s
-end
-
-def compute_labels(prog)
-    base = CODE_BASE_ADDR
+def compute_labels(prog, base = 0)
+    labels = {}
     prog.lines.map(&:chomp).map(&:strip).each do |line|
         next if line.empty?
         next if line[0] == ?#
 
-        if line =~ /(\w+):$/
-            LABELS[$1] = base
+        if line =~ /([[:graph:]]+):$/
+            labels[$1] = base
+        elsif line =~ /^\.data (.*)/
+            items = $1.split(',').map(&:strip)
+            data = encode_data(items)
+            data += "\x00" if data.size % 2 == 1 # preserve alignment
+            base += data.size
         else
-            base += 4
+            base += get_insn_size(line.split(' ').first)
         end
     end
+
+    LABELS.update(labels)
 end
 
-def assemble(bytecode, prog)
-    compute_labels(prog)
-    base = CODE_BASE_ADDR
-    prog.lines.map(&:chomp).map(&:strip).each do |line|
-        next if line.empty? or line[-1] == ?: or line[0] == ?#
+def assemble(lst, base = 0)
+    compute_labels(lst, base)
+    code = ''.force_encoding('binary')
 
-        if line.count(' ') == 0
+    lst.lines.map(&:chomp).map(&:strip).each do |line|
+        next if line.empty? or line[-1] == ?: or line[0] == ?#
+        line.gsub!(/\s+\#.*$/,"")
+        addr = base + code.size
+
+        if line =~ /^.data (.*)/
+            items = $1.split(',').map(&:strip)
+            data = encode_data(items)
+            data += "\x00" if data.size % 2 == 1 # preserve alignment
+            code += data
+        elsif line.count(' ') == 0
             opcode = line
-            bytecode[base, 4] = encode_insn(opcode) 
+            code += encode_insn(opcode) 
         elsif line =~ /^([^ ]+) (.*)$/ 
             opcode = $1
             args = $2.split(', ')
-            bytecode[base, 4] = encode_insn(opcode, *args)
+            code += encode_insn(opcode, *args)
         else
             fail "Bad assembly line : #{line.inspect}"
         end
 
-        base += 4
     end
 
-    bytecode
+    code
 end
 
 
-bytecode = "\x00" * PROGRAM_SIZE
-install_rodata(bytecode)
-install_consts(bytecode)
-
-@bytecode = assemble(bytecode, <<ASM)
+@bytecode = assemble(<<ASM, CODE_BASE_ADDR)
 #
 # SSTIC, crack-me assembly routine.
 #
-MOV R0, 2
-MOV R1, 1
-MOV R2, #{str_addr("Please enter the decryption key: ")}
-MOV R3, #{"Please enter the decryption key: ".size}
-SYSCALL
+MOV R1, 2
+MOV R2, 1
+MOV R3, prompt
+MOV R4, #{"Please enter the decryption key: ".size.to_s 16}
+SYS
 
-READLN #{BSS_BASE_ADDR}
-CMP R0, #{const_addr(16)}
-BRLO failure
-BRHI failure
+# Retrieve the key in hexstr format
+MOV R1, 1
+XOR R2, R2
+MOV R3, input
+MOV R4, 0x10
+SYS
+
+MOVR R5, R1
+
+#MOV R1, 0x1337
+#SYS
+
+# dump input
+#MOV R1, 0xdead
+#MOV R2, input
+#MOV R3, 0x10
+#SYS
+
+# We need 0x10 bytes
+MOV R3, 0x10
+SUB R5, R3
+B.NEQZ R5, fail_wrong_pass
+
+MOV R15, 0x10  # Counter
+MOV R14, input # Current input
+
+MOV R13, key   # Current output
+DEC R13
+
+MOV R2, 0x30   # '0' character
+MOV R3, 0x39   # '9' character
+MOV R4, 0x41   # 'A' character
+MOV R5, 0x46   # 'F' character
+
+loop:
+    # For each character in input
+    LDRB R12, R14, 0  # Get input
+
+    # if cur_input < '0', goto end
+    MOVR R1, R12
+    SUB R1, R2
+    B.LTZ R1, fail_wrong_pass
+
+    # if cur_input <= '9', goto char_is_09
+    MOVR R1, R12
+    SUB R1, R3
+    B.LTEZ R1, char_is_09
+
+    # if cur_input < 'A', goto end
+    MOVR R1, R12
+    SUB R1, R4
+    B.LTZ R1, fail_wrong_pass
+
+    # If cur_input > 'F', goto end
+    MOVR R1, R12
+    SUB R1, R5
+    B.GTZ R1, fail_wrong_pass
+
+    char_is_AF:
+    SUB R12, R4
+    MOV R1, 0xA
+    ADD R12, R1
+    B.al R0, copy_nibble
+
+    char_is_09:
+    SUB R12, R2
+
+    copy_nibble:
+    MOVR R1, R15
+    MOV R7, 1
+    AND R1, R7
+    B.neqz R1, skip_shift
+
+    MOV R7, 4
+    LSL R12, R7
+    INC R13
+
+    skip_shift:
+
+    LDRB R1, R13, 0
+    OR R1, R12
+    STRB R1, R13, 0
+
+    next:
+
+    INC R14
+
+    DEC R15
+    B.NEQZ R15, loop
+
+MOV R1, 0xdead
+MOV R2, key
+MOV R3, 8
+SYS
+
+MOV R1, 2
+MOV R2, 1
+MOV R3, decrypting
+MOV R4, #{"Trying to decrypt payload...\n".size.to_s(16)}
+SYS
+
+MOV R1, key
+LDR R12, R1, 0
+LDR R13, R1, 4
+
+#
+# The password is now loaded in R12, R13.
+# Password are LFSR taps.
+#
 
 XOR R1, R1
-XOR R3, R3
+MOV R2, #{PAYLOAD_BASE_ADDR.to_s(16)}
+MOV R3, 8
+XOR R4, R4
 
-check_chars:
-    CMP R1, R0
-    BREQ dump
+# 64 bits LFSR initial internal state.
+# [ R10 ] [ R11 ]
+MOV R10, 0x0BADB105
+MOV R11, 0x0BADB105
 
-    MOV R2, #{BSS_BASE_ADDR}
-    ADD R2, R1
-    LDRB R2, R2
-    CMP R2, #{const_addr('0'.ord)}
-    BRLO failure
-    CMP R2, #{const_addr('f'.ord)}
-    BRHI failure
-    CMP R2, #{const_addr('a'.ord)}
-    BRLO check_num
-    SUB R2, #{const_addr('a'.ord)}
-    BR next_char
-check_num:
-    CMP R2, #{const_addr('9'.ord)}
-    BRHI failure
-    SUB R2, #{const_addr('0'.ord)}
+lfsr_next:
+    # Load state into R8, R9
+    MOVR R8, R10
+    MOVR R9, R11
+    AND R8, R12
+    AND R9, R13
 
-next_char:
-    SHL R3, #{const_addr(4)}
-    OR R3, R2
-    ADD R1, #{const_addr(1)}
-    BR check_chars
+    # Parity bit is saved in R9.
+    XOR R8, R9
+    PAR R9, R8
 
-dump:
-    MOV R0, 2
-    MOV R1, 1
-    MOV R2, #{str_addr("Dumping payload...\n")}
-    MOV R3, #{"Dumping payload...\n".size}
-    SYSCALL
+    # Update internal state.
+    MOV R8, 1
+    MOV R7, 0x1f
 
-    XOR R0, R0
-    MOV R1, #{str_addr("payload.bin\x00")}
-    MOV R2, 241
-    MOV R3, #{0666}
-    SYSCALL
+    MOVR R6, R10
+    AND R6, R8
+    LSL R6, R7
+    LSR R11, R8
+    OR R11, R6
+    LSR R10, R8
+    LSL R9, R7
+    OR R10, R9
 
-    MOV R1, R0
-    MOV R0, 2
-    XOR R2, R2
-    MOV R3, 64
-    SYSCALL
+    # Extract output bit.
+    DEC R3
+    MOVR R7, R10
+    AND R7, R8
+    LSL R7, R3
+    OR R4, R7
 
-    MOV R0, 3
-    SYSCALL
+    B.NEQZ R3, lfsr_continue
 
-    #MOV R2, 64
-    #XOR R1, R1
-    #WRITEFILE #{str_addr("payload.bin\x00")}
+    # Commit byte in memory.
+    MOV R7, #{PAYLOAD_BASE_ADDR.to_s(16)}
+    ADD R7, R1
+    DEC R7
+    LDRB R8, R7, 0
+    XOR R8, R4
+    STRB R8, R7, 0
+    MOV R3, 8
+    INC R1 # Increment byte counter
+    XOR R4, R4
 
-BR end
+lfsr_continue:
+    MOV R8, #{PAYLOAD_SIZE.to_s(16)}
+    SUB R8, R1
+    B.GTZ R8, lfsr_next
 
-failure:
-    MOV R0, 2
-    MOV R1, 1
-    MOV R2, #{str_addr("Wrong key.\n")}
-    MOV R3, #{"Wrong key.\n".size}
-    SYSCALL
+#
+# Buffer decrypted. Now removes padding.
+#
+MOV R13, #{PAYLOAD_BASE_ADDR.to_s(16)}
+MOV R12, #{PAYLOAD_SIZE.to_s 16}
+MOV R11, 0x80
+
+padding_strip_zeros:
+    DEC R12
+    B.LTEZ R12, fail_bad_padding 
+
+    MOVR R10, R13
+    ADD R10, R12
+    LDRB R1, R10, 0
+    B.eqz R1, padding_strip_zeros
+    SUB R1, R11
+    B.neqz R1, fail_bad_padding 
+   
+dump_file:
+    # open()
+    AND R1, R0
+    MOV R2, filename
+    MOV R3, 0x2c1
+    MOV R4, #{0666.to_s 16}
+    SYS
+
+    B.LTZ R1, end
+
+    # write()
+    MOVR R2, R1
+    MOV R1, 2
+    MOV R3, #{PAYLOAD_BASE_ADDR.to_s(16)}
+    MOVR R4, R12 
+    SYS
+
+    # close()
+    MOV R1, 3
+    SYS
+
 end:
-    HALT
+    HLT
+
+fail_wrong_pass:
+    MOV R1, 2
+    MOV R2, 1
+    MOV R3, bad_pass 
+    MOV R4, #{"Wrong key format.\n".size.to_s 16}
+    SYS
+    B.AL R0, end
+
+fail_bad_padding:
+    MOV R1, 2
+    MOV R2, 1
+    MOV R3, bad_padding
+    MOV R4, #{"Invalid padding.\n".size.to_s 16}
+    SYS
+    B.AL R0, end
+
+key:
+    .data 0,0,0,0,0,0,0,0
+
+prompt:
+    .data "Please enter the decryption key: ",0
+
+decrypting:
+    .data "Trying to decrypt payload...", 0xa
+
+bad_pass:
+    .data "Wrong key format.",0xa,0
+
+bad_padding:
+    .data "Invalid padding.",0xa,0
+
+filename:
+    .data "payload.zip",0
+
+input:
+    .data "XXXXXXXXXXXXXXXX", 0
 ASM
 
-@bytecode[0x38,8] = [ 0x40 ].pack 'Q'
+@bytecode = "\x00" * 64 + @bytecode
+@bytecode[0x34,4] = [ STACK_BASE_ADDR ].pack 'V'
+@bytecode[0x3c,4] = [ 0x40 ].pack 'V'
+@bytecode = @bytecode.ljust(PROGRAM_SIZE, "\x00")
+@bytecode[PAYLOAD_BASE_ADDR, PAYLOAD_SIZE] = PAYLOAD
+
+LABELS.each_pair do |label, addr|
+    puts "#{label} : %04x" % addr
+end
 
 File.binwrite(OUTPUT_FILE, @bytecode)
+
 __END__
 system "./chacha_crypt #{PROGRAM_BIN}"
 

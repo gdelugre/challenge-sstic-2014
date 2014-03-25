@@ -42,6 +42,7 @@ static void vm_hexdump(const void *addr, size_t size)
 }
 #else
 #define vm_print(...)
+#define printf(...)
 //#define vm_hexdump(addr, size)
 __attribute__((noinline)) 
 static void vm_hexdump(const void *addr, size_t size)
@@ -72,12 +73,14 @@ static void vm_hexdump(const void *addr, size_t size)
 
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 
-typedef unsigned long vm_addr_t;
+typedef unsigned long vm_time_t;
 typedef unsigned long vm_page_t;
 typedef unsigned long vm_off_t;
-typedef unsigned long vm_time_t;
-typedef uint64_t vm_reg_t;
-typedef uint64_t vm_word_t;
+typedef unsigned long vm_addr_t;
+
+typedef uint32_t vm_word_t;
+typedef int32_t vm_sword_t;
+typedef vm_word_t vm_reg_t;
 
 /* N = 13, TAPS = 13, 12, 10, 9 */
 //#define POLY_SIZE 13UL
@@ -126,75 +129,136 @@ typedef struct {
     } flags;
 } vm_cache_entry;
 
-#define VM_NR_REGISTERS 8
-#define VM_IP_REGISTER 7
+#define VM_NR_REGISTERS 16
+#define VM_STACK_REGISTER 14
+#define VM_LINK_REGISTER 15
+#define VM_REGISTER_SIZE sizeof(vm_reg_t)
 
 typedef struct {
     struct {
-        vm_reg_t r0;
         vm_reg_t r1;
         vm_reg_t r2;
         vm_reg_t r3;
         vm_reg_t r4;
         vm_reg_t r5;
         vm_reg_t r6;
-        vm_addr_t ip;
+        vm_reg_t r7;
+        vm_reg_t r8;
+        vm_reg_t r9;
+        vm_reg_t r10;
+        vm_reg_t r11;
+        vm_reg_t r12;
+        vm_reg_t r13;
+        vm_reg_t r14;
+        vm_reg_t r15;
+        vm_reg_t ip;
     } ctx;
 } vm_memory;
 
 struct _vm_state;
+typedef unsigned char vm_opcode_t;
 
-/* 
- * VM instruction:
- *   [ opcode : 8 ], [ reg : 3 ], [ addr : 19 ], [ cond: 2]
- */
 typedef struct __attribute__((packed)) {
-    unsigned int opcode:8;
-    unsigned int reg:3;
-    //union {
-        unsigned int addr:19;
-      /*  struct {
-            unsigned int base:3;
-            unsigned int offset:16;
-        };
-    };*/
-    unsigned int cond:2;
+    union {
+        /* [mov, or] Rd, imm16 << shift */
+        struct {
+            unsigned opcode: 8;
+            unsigned rd: 4;
+            unsigned imm: 16;
+            unsigned sbz: 4;
+        } mov_or_imm16;
+
+        /* ld, ldh, ldb, st, sth, stb Rd, [Rs,off] */
+        struct {
+            unsigned opcode: 8;
+            unsigned rd: 4;
+            unsigned rs: 4;
+            unsigned off: 16;
+        } mem;
+
+        /* bcc Rc, dest */
+        struct {
+            unsigned opcode: 8;
+            unsigned link: 1;
+            unsigned rc: 4;
+            unsigned cond: 3;
+            unsigned dest: 16;
+        } bcc;
+
+        /* [not, inc, dec, push, pop] Rd */
+        struct {
+            unsigned opcode: 8;
+            unsigned rd: 4;
+            unsigned sbz: 4;
+        } un;
+
+        /* [xor, or, and, add, sub, mul, div, lsl, asr, lsr, rol, ror] Rd, Rs*/
+        struct {
+            unsigned opcode: 8;
+            unsigned rd: 4;
+            unsigned rs: 4;
+        } bin;
+
+        /* syscall, ret, nop, hlt */
+        struct {
+            unsigned opcode : 8;
+            unsigned sbz: 8;
+        } noarg;
+
+        unsigned int i;
+    };
 } vm_insn_t;
 
 enum {
     VM_COND_ALWAYS,
-    VM_COND_IS_EQUAL,
-    VM_COND_IS_LOWER,
-    VM_COND_IS_HIGHER
+    VM_COND_NEVER,
+    VM_COND_EQZ,
+    VM_COND_NEQZ,
+    VM_COND_LTZ,
+    VM_COND_GTZ,
+    VM_COND_LTEZ,
+    VM_COND_GTEZ,
 } VM_COND;
 
 typedef void (*vm_opcode_handler)(struct _vm_state *, vm_insn_t);
 enum {
-    VM_OP_HALT,
-    VM_OP_NONE,
-    VM_OP_LDRB,
+    VM_OP_MOV_IMM16,
+    VM_OP_OR_IMM16,
+    VM_OP_LDR,
     VM_OP_LDRH,
-    VM_OP_LDRW,
-    VM_OP_LDR, // Can be used for mov reg, reg
-    VM_OP_STRB,
+    VM_OP_LDRB,
+    VM_OP_STR,
     VM_OP_STRH,
-    VM_OP_STRW,
-    VM_OP_STR, // Can be used for mov reg, reg
-    VM_OP_MOV_IMM19,
-    VM_OP_SHL,
-    VM_OP_SHR,
+    VM_OP_STRB,
+    VM_OP_BCC,
+
+    VM_OP_NOT,
+    VM_OP_XOR,
+    VM_OP_OR,
+    VM_OP_AND,
+    VM_OP_LSL,
+    VM_OP_LSR,
+    VM_OP_ASR,
+    VM_OP_ROL,
+    VM_OP_ROR,
+
     VM_OP_ADD,
     VM_OP_SUB,
-    VM_OP_AND,
-    VM_OP_OR,
-    VM_OP_XOR,
-    VM_OP_NOT,
-    VM_OP_CMP,
-    VM_OP_BR,
-    VM_OP_PRINT,
-    VM_OP_READLN,
-    VM_OP_WRITEFILE,
-    VM_OP_SYSCALL,
+    VM_OP_MUL,
+    VM_OP_DIV,
+
+    VM_OP_INC,
+    VM_OP_DEC,
+    VM_OP_PUSH,
+    VM_OP_POP,
+
+    VM_OP_RET,
+    VM_OP_NOP,
+    VM_OP_HLT,
+    VM_OP_SYS,
+
+    VM_OP_PAR,
+
     __NR_VM_OPCODES
 } VM_OPCODE;
 
@@ -208,9 +272,6 @@ enum {
 typedef struct _vm_state {
     struct {
         unsigned int running:1;
-        unsigned int lower:1;
-        unsigned int equal:1;
-        unsigned int higher:1;
     } flags;
 
     int status;
@@ -235,6 +296,7 @@ enum {
     VM_STATUS_INTERNAL_ERROR,
     VM_STATUS_INVALID_ARGUMENT,
     VM_STATUS_OUT_OF_MEMORY,
+    VM_STATUS_DIV_BY_ZERO,
 } VM_STATUS;
 
 int vm_initialize(vm_memory *, size_t, vm_state **);
