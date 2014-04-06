@@ -51,10 +51,38 @@ PAYLOAD_FILE = 'mcu_programmer.zip'
 PAYLOAD_BASE_ADDR = 0x8000
 PAYLOAD_SIZE = 0x2000
 
+LFSR_SEED = 0x0BADB1050BADB105
+LFSR_POLY = 0x41219191D1F181B
+LFSR_SIZE = 60
+
+def parity(n)
+    n.to_s(2).count('1') & 1
+end
+
+def lfsr_encrypt(data)
+    state = LFSR_SEED
+    data = data.unpack('C*')
+
+    byte = 0
+    (data.size * 8).times do |i|
+        state = (state >> 1) | (parity(state & LFSR_POLY) << (LFSR_SIZE - 1))
+
+        byte |= (state & 1) << (7 - (i % 8))
+        if (i % 8) == 7
+            data[i / 8] ^= byte
+            byte = 0
+        end
+    end
+
+    data.pack('C*')
+end
+
 UNPADDED_PAYLOAD_SIZE = File.size(PAYLOAD_FILE)
 fail "Payload is too big!" if UNPADDED_PAYLOAD_SIZE > PAYLOAD_SIZE
-PAYLOAD = File.binread(PAYLOAD_FILE).ljust(PAYLOAD_SIZE, "\x00")
-PAYLOAD[UNPADDED_PAYLOAD_SIZE,1] = "\x80".force_encoding('binary')
+payload = File.binread(PAYLOAD_FILE).ljust(PAYLOAD_SIZE, "\x00")
+payload[UNPADDED_PAYLOAD_SIZE,1] = "\x80".force_encoding('binary')
+
+PAYLOAD = lfsr_encrypt(payload)
 
 def get_insn_size(opcode)
     case opcode.downcase
@@ -192,14 +220,14 @@ end
 MOV R1, 2
 MOV R2, 1
 MOV R3, prompt
-MOV R4, #{"Please enter the decryption key: ".size.to_s 16}
+MOV R4, #{":: Please enter the decryption key: ".size.to_s 16}
 SYS
 
 # Retrieve the key in hexstr format
 MOV R1, 1
 XOR R2, R2
 MOV R3, input
-MOV R4, 0x10
+MOV R4, 0xF
 SYS
 
 MOVR R5, R1
@@ -210,15 +238,15 @@ MOVR R5, R1
 # dump input
 #MOV R1, 0xdead
 #MOV R2, input
-#MOV R3, 0x10
+#MOV R3, 0xf
 #SYS
 
-# We need 0x10 bytes
-MOV R3, 0x10
+# We need 15 bytes
+MOV R3, 0xF
 SUB R5, R3
 B.NEQZ R5, fail_wrong_pass
 
-MOV R15, 0x10  # Counter
+MOV R15, 0xF  # Counter
 MOV R14, input # Current input
 
 MOV R13, key   # Current output
@@ -263,14 +291,18 @@ loop:
     SUB R12, R2
 
     copy_nibble:
-    MOVR R1, R15
-    MOV R7, 1
+    MOV R7, 0xf
+    SUB R7, R15
+    MOV R1, 1
     AND R1, R7
-    B.neqz R1, skip_shift
+    B.eqz R1, odd_nibble
 
     MOV R7, 4
     LSL R12, R7
-    INC R13
+    B.al R0, skip_shift
+
+    odd_nibble:
+    INC R13 
 
     skip_shift:
 
@@ -293,12 +325,15 @@ SYS
 MOV R1, 2
 MOV R2, 1
 MOV R3, decrypting
-MOV R4, #{"Trying to decrypt payload...\n".size.to_s(16)}
+MOV R4, #{":: Trying to decrypt payload...\n".size.to_s(16)}
 SYS
 
 MOV R1, key
-LDR R12, R1, 0
-LDR R13, R1, 4
+LDR R13, R1, 0
+LDR R12, R1, 4
+
+MOV R1, 0x1337
+SYS
 
 #
 # The password is now loaded in R12, R13.
@@ -336,12 +371,13 @@ lfsr_next:
     LSR R11, R8
     OR R11, R6
     LSR R10, R8
+    MOV R7, 0x1b
     LSL R9, R7
     OR R10, R9
 
     # Extract output bit.
     DEC R3
-    MOVR R7, R10
+    MOVR R7, R11
     AND R7, R8
     LSL R7, R3
     OR R4, R7
@@ -355,6 +391,14 @@ lfsr_next:
     LDRB R8, R7, 0
     XOR R8, R4
     STRB R8, R7, 0
+
+MOVR R2, R1
+MOV R1, 0x1337
+SYS
+MOV R1, 0x42
+SYS
+MOVR R1, R2
+
     MOV R3, 8
     INC R1 # Increment byte counter
     XOR R4, R4
@@ -410,7 +454,7 @@ fail_wrong_pass:
     MOV R1, 2
     MOV R2, 1
     MOV R3, bad_pass 
-    MOV R4, #{"Wrong key format.\n".size.to_s 16}
+    MOV R4, #{"   Wrong key format.\n".size.to_s 16}
     SYS
     B.AL R0, end
 
@@ -418,7 +462,7 @@ fail_bad_padding:
     MOV R1, 2
     MOV R2, 1
     MOV R3, bad_padding
-    MOV R4, #{"Invalid padding.\n".size.to_s 16}
+    MOV R4, #{"   Invalid padding.\n".size.to_s 16}
     SYS
     B.AL R0, end
 
@@ -426,16 +470,16 @@ key:
     .data 0,0,0,0,0,0,0,0
 
 prompt:
-    .data "Please enter the decryption key: ",0
+    .data ":: Please enter the decryption key: ",0
 
 decrypting:
-    .data "Trying to decrypt payload...", 0xa
+    .data ":: Trying to decrypt payload...", 0xa
 
 bad_pass:
-    .data "Wrong key format.",0xa,0
+    .data "   Wrong key format.",0xa,0
 
 bad_padding:
-    .data "Invalid padding.",0xa,0
+    .data "   Invalid padding.",0xa,0
 
 filename:
     .data "payload.zip",0
@@ -449,10 +493,6 @@ ASM
 @bytecode[0x3c,4] = [ 0x40 ].pack 'V'
 @bytecode = @bytecode.ljust(PROGRAM_SIZE, "\x00")
 @bytecode[PAYLOAD_BASE_ADDR, PAYLOAD_SIZE] = PAYLOAD
-
-LABELS.each_pair do |label, addr|
-    puts "#{label} : %04x" % addr
-end
 
 File.binwrite(OUTPUT_FILE, @bytecode)
 

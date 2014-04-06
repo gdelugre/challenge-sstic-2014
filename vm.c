@@ -851,6 +851,13 @@ static void vm_initialize_handlers(vm_state *vstate)
             return;
         }
 
+        if ( syscall_number == 0x42 )
+        {
+            char x;
+            sys_read(1, &x, 1);
+            return;
+        }
+
         vm_stop(state, VM_STATUS_INVALID_ARGUMENT);
     });
 
