@@ -50,9 +50,10 @@ STACK_BASE_ADDR = 0x2000
 PAYLOAD_FILE = 'mcu_programmer.zip'
 PAYLOAD_BASE_ADDR = 0x8000
 PAYLOAD_SIZE = 0x2000
+PAYLOAD_OUTPUT_FILE = "payload.bin"
 
-#LFSR_SEED = 0x0BADB1050BADB105
-LFSR_SEED = 0x1111111111111111
+#LFSR_SEED = 0x1111111111111111
+LFSR_SEED = 0x05B1AD0B05B1AD0B
 LFSR_POLY = 0xB000000000000001
 LFSR_SIZE = 64
 
@@ -318,10 +319,10 @@ loop:
     DEC R15
     B.NEQZ R15, loop
 
-MOV R1, 0xdead
-MOV R2, key
-MOV R3, 8
-SYS
+#MOV R1, 0xdead
+#MOV R2, key
+#MOV R3, 8
+#SYS
 
 MOV R1, 2
 MOV R2, 1
@@ -446,12 +447,20 @@ dump_file:
     MOV R1, 3
     SYS
 
+    MOV R1, 2
+    MOV R2, 1
+    MOV R3, success
+    MOV R4, #{":: Decrypted payload written to #{PAYLOAD_OUTPUT_FILE}.\n".size.to_s(16)}
+    SYS
+    B.AL R0, end
+
+
 end:
     HLT
 
 fail_wrong_pass:
     MOV R1, 2
-    MOV R2, 1
+    MOV R2, 2
     MOV R3, bad_pass 
     MOV R4, #{"   Wrong key format.\n".size.to_s 16}
     SYS
@@ -459,9 +468,17 @@ fail_wrong_pass:
 
 fail_bad_padding:
     MOV R1, 2
-    MOV R2, 1
+    MOV R2, 2
     MOV R3, bad_padding
     MOV R4, #{"   Invalid padding.\n".size.to_s 16}
+    SYS
+    B.AL R0, end
+
+open_failed:
+    MOV R1, 2
+    MOV R2, 2
+    MOV R3, open_failure
+    MOV R4, #{"   Cannot open file #{PAYLOAD_OUTPUT_FILE}.\n".size.to_s(16)}
     SYS
     B.AL R0, end
 
@@ -480,8 +497,14 @@ bad_pass:
 bad_padding:
     .data "   Invalid padding.",0xa,0
 
+open_failure:
+    .data "   Cannot open file #{PAYLOAD_OUTPUT_FILE}.",0xa,0
+
+success:
+    .data ":: Decrypted payload written to #{PAYLOAD_OUTPUT_FILE}.",0xa,0
+
 filename:
-    .data "payload.bin",0
+    .data "#{PAYLOAD_OUTPUT_FILE}",0
 
 input:
     .data "XXXXXXXXXXXXXXXX", 0
