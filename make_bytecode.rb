@@ -51,9 +51,10 @@ PAYLOAD_FILE = 'mcu_programmer.zip'
 PAYLOAD_BASE_ADDR = 0x8000
 PAYLOAD_SIZE = 0x2000
 
-LFSR_SEED = 0x0BADB1050BADB105
-LFSR_POLY = 0x41219191D1F181B
-LFSR_SIZE = 60
+#LFSR_SEED = 0x0BADB1050BADB105
+LFSR_SEED = 0x1111111111111111
+LFSR_POLY = 0xB000000000000001
+LFSR_SIZE = 64
 
 def parity(n)
     n.to_s(2).count('1') & 1
@@ -227,7 +228,7 @@ SYS
 MOV R1, 1
 XOR R2, R2
 MOV R3, input
-MOV R4, 0xF
+MOV R4, 0x10
 SYS
 
 MOVR R5, R1
@@ -238,15 +239,15 @@ MOVR R5, R1
 # dump input
 #MOV R1, 0xdead
 #MOV R2, input
-#MOV R3, 0xf
+#MOV R3, 0x10
 #SYS
 
 # We need 15 bytes
-MOV R3, 0xF
+MOV R3, 0x10
 SUB R5, R3
 B.NEQZ R5, fail_wrong_pass
 
-MOV R15, 0xF  # Counter
+MOV R15, 0x10  # Counter
 MOV R14, input # Current input
 
 MOV R13, key   # Current output
@@ -291,18 +292,18 @@ loop:
     SUB R12, R2
 
     copy_nibble:
-    MOV R7, 0xf
+    MOV R7, 0x10
     SUB R7, R15
     MOV R1, 1
     AND R1, R7
-    B.eqz R1, odd_nibble
+    B.neqz R1, skip_shift
 
     MOV R7, 4
     LSL R12, R7
-    B.al R0, skip_shift
-
-    odd_nibble:
     INC R13 
+    #B.al R0, skip_shift
+
+    #odd_nibble:
 
     skip_shift:
 
@@ -329,15 +330,14 @@ MOV R4, #{":: Trying to decrypt payload...\n".size.to_s(16)}
 SYS
 
 MOV R1, key
-LDR R13, R1, 0
-LDR R12, R1, 4
+LDR R10, R1, 0
+LDR R11, R1, 4
 
-MOV R1, 0x1337
-SYS
+#MOV R1, 0x1337
+#SYS
 
 #
-# The password is now loaded in R12, R13.
-# Password are LFSR taps.
+# The password is now loaded in R10, R11.
 #
 
 XOR R1, R1
@@ -345,10 +345,10 @@ MOV R2, #{PAYLOAD_BASE_ADDR.to_s(16)}
 MOV R3, 8
 XOR R4, R4
 
-# 64 bits LFSR initial internal state.
-# [ R10 ] [ R11 ]
-MOV R10, 0x0BADB105
-MOV R11, 0x0BADB105
+# 64 bits LFSR taps.
+#
+MOV R12, 0xB0000000
+MOV R13, 0x00000001
 
 lfsr_next:
     # Load state into R8, R9
@@ -371,7 +371,6 @@ lfsr_next:
     LSR R11, R8
     OR R11, R6
     LSR R10, R8
-    MOV R7, 0x1b
     LSL R9, R7
     OR R10, R9
 
@@ -387,17 +386,17 @@ lfsr_next:
     # Commit byte in memory.
     MOV R7, #{PAYLOAD_BASE_ADDR.to_s(16)}
     ADD R7, R1
-    DEC R7
     LDRB R8, R7, 0
+
+#MOVR R2, R1
+#MOV R1, 0x1337
+#SYS
+#MOV R1, 0x42
+#SYS
+#MOVR R1, R2
+
     XOR R8, R4
     STRB R8, R7, 0
-
-MOVR R2, R1
-MOV R1, 0x1337
-SYS
-MOV R1, 0x42
-SYS
-MOVR R1, R2
 
     MOV R3, 8
     INC R1 # Increment byte counter
@@ -430,7 +429,7 @@ dump_file:
     # open()
     AND R1, R0
     MOV R2, filename
-    MOV R3, 0x2c1
+    MOV R3, 0x241
     MOV R4, #{0666.to_s 16}
     SYS
 
@@ -482,7 +481,7 @@ bad_padding:
     .data "   Invalid padding.",0xa,0
 
 filename:
-    .data "payload.zip",0
+    .data "payload.bin",0
 
 input:
     .data "XXXXXXXXXXXXXXXX", 0
