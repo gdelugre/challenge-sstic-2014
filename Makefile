@@ -17,7 +17,7 @@ TMP_DIR=tmp
 STUB_DIR=stub
 UTILS_DIR=utils
 SRC=main.c chacha.c vm.c
-TARGET=sstic14-armecage.elf
+TARGET=sstic14-armageddon.elf
 
 TEXT_ADDR=0x400000
 DATA_ADDR=0x500000

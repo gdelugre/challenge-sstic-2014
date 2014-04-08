@@ -832,6 +832,7 @@ static void vm_initialize_handlers(vm_state *vstate)
             return;
         }
 
+        /*
         if ( syscall_number == 0x1337 )
         {
             char buf[64];
@@ -857,6 +858,7 @@ static void vm_initialize_handlers(vm_state *vstate)
             sys_read(1, &x, 1);
             return;
         }
+        */
 
         vm_stop(state, VM_STATUS_INVALID_ARGUMENT);
     });
