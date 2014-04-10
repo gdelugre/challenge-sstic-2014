@@ -414,8 +414,11 @@ lfsr_continue:
 MOV R13, #{PAYLOAD_BASE_ADDR.to_s(16)}
 MOV R12, #{PAYLOAD_SIZE.to_s 16}
 MOV R11, 0x80
+XOR R10, R10
+MOV R9, 8
 
 padding_strip_zeros:
+    INC R10
     DEC R12
     B.LTEZ R12, fail_bad_padding 
 
@@ -425,6 +428,8 @@ padding_strip_zeros:
     B.eqz R1, padding_strip_zeros
     SUB R1, R11
     B.neqz R1, fail_bad_padding 
+    SUB R10, R9
+    B.ltez R10, fail_bad_padding
    
 dump_file:
     # open()

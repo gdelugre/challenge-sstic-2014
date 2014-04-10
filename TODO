@@ -4,5 +4,3 @@
 [mcu] Créer un script pour dumper la ROM. Vérifier que le dump est valide.
 [mcu] Afficher une string en clair au début du code.
 [mcu] Ajouter +2 aux sauts relatifs.
-
-[arm] Vérifier que la taille du padding est supérieure à 8.
