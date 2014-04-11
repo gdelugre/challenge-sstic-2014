@@ -194,6 +194,7 @@ call strchr
 mov r1, r10
 call to_dec
 
+mov r1, #{SUCCESS_STR.size.to_s(16)}
 mov r0, goodbye_str
 call print
 
@@ -479,6 +480,16 @@ shellcode:
 .data 0, 0
 LISTING
 
+program = assemble(<<-LISTING) if kind == 'dump'
+###
+### SSTIC 2014, remote ROM dumper.
+###
+mov r0, 0xFD00
+mov r1, 0x300
+syscall 2
+syscall 1
+LISTING
+
 program = assemble(<<-LISTING, 0xFD00) if kind == 'rom'
 #
 # ROM code. Base is 0xFD00.
@@ -499,6 +510,7 @@ call read_word
 ret r0
 
 unknown_syscall:
+    mov r1, #{"[ERROR] Undefined system call. CPU halted.\n".size.to_s(16)}
     mov r0, error_bad_syscall
     call print
 
@@ -512,8 +524,12 @@ system_call_halt:
 
 # print(char *);
 system_call_print:
+    mov r0, 0xFC22
+    call read_word
+    mov r5, r0   
     mov r0, 0xFC20
     call read_word
+    mov r1, r5
     call print
     sysret
 
@@ -606,6 +622,8 @@ print:
     xor r11, r11, r11
 
     .print_loop: 
+        and r1, r1, r1
+        jz .print_ret
         add r9, r14, r8
         sub r9, r9, r12
         js .allowed_addr
@@ -616,15 +634,15 @@ print:
     .allowed_addr:
         xor r9, r9, r9
         ldr r9, r14, r8
-        and r9, r9, r9
-        jz .print_ret
         str r9, r13, r11
         add r8, r8, r10
+        sub r1, r1, r10
         jmp .print_loop
     .print_ret:
     ret r15
 
 exit_bad_addr:
+    mov r1, #{"[ERROR] Printing at unallowed address. CPU halted.\n".size.to_s(16)}
     mov r0, error_bad_addr
     call print
     jmp system_call_halt
@@ -643,6 +661,9 @@ if kind == 'fw'
 elsif kind == 'xp'
     puts hex = encode_hex(program)
     File.binwrite('exploit.hex', hex)
+elsif kind == 'dump'
+    puts hex = encode_hex(program)
+    File.binwrite('dump_rom.hex', hex)
 else
     File.binwrite("rom.bin", program)
 end

@@ -1,5 +1,5 @@
 === TODO ===
 
-[mcu] Ajouter un paramètre size au syscall print.
-[mcu] Créer un script pour dumper la ROM. Vérifier que le dump est valide.
 [mcu] Afficher une string en clair au début du code.
+
+[arm] Faire un script pour casser le LFSR.
