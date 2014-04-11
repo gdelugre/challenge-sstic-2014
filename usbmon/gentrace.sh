@@ -1,11 +1,14 @@
 #!/bin/sh
 
-adb -s BH90EKK806 shell rm -f /data/local/tmp/badbios.bin
+adb -s 8113b63c shell rm -f /data/local/tmp/badbios.bin
+modprobe usbmon
 usbmon -fu -s 8192 > usbmon.trace &
 
-adb -s BH90EKK806 ls /data/local/tmp
-adb -s BH90EKK806 push $1 /data/local/tmp/badbios.bin
-adb -s BH90EKK806 ls /data/local/tmp
+adb -s 8113b63c ls /sdcard/
+adb -s 8113b63c ls /sdcard/Documents/
+adb -s 8113b63c ls /data/local/tmp
+adb -s 8113b63c push $1 /data/local/tmp/badbios.bin
+adb -s 8113b63c ls /data/local/tmp
 
 sync
 pkill usbmon
