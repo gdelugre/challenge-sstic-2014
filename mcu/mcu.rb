@@ -485,7 +485,7 @@ loop do
     while running_processes < SERVER_POOL_NPROCESS
         Process.fork {
             puts "[%s] New server process spawned, pid %d." % [ Time.now.to_s, $$ ]
-            run_server("0.0.0.0", 20000)
+            run_server("0.0.0.0", 10101)
         }
         running_processes += 1
     end
