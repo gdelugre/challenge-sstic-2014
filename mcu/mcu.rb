@@ -294,10 +294,10 @@ class Emulator
 
         case opcode
             when 'jmp'
-                return (@pc + args[0]) & 0xffff
+                return (@pc + 2 + args[0]) & 0xffff
             when 'call'
                 @registers[15] = (@pc + 2) & 0xffff
-                return (@pc + args[0]) & 0xffff
+                return (@pc + 2 + args[0]) & 0xffff
             when 'syscall'
                 save_context()
                 @registers[0] = args[0]
@@ -309,7 +309,7 @@ class Emulator
             when 'ret'
                 return @registers[args[0]]
             when 'jcc'
-                return (check_condition(args[0]) ? (@pc + args[1]) : (@pc + 2)) & 0xffff
+                return (check_condition(args[0]) ? (@pc + 2 + args[1]) : (@pc + 2)) & 0xffff
 
             when 'mov.lo'
                 @registers[args[0]] &= 0xff00

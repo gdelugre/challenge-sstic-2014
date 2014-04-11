@@ -100,9 +100,9 @@ def encode_insn(pc, opcode, *args)
             insn |= reg(args[2]) << 0
         when /j(s|z|ns|nz)/
             insn |= cond($1) << 10
-            insn |= (addr(args[0]) - pc) & 1023
+            insn |= (addr(args[0]) - (pc + 2)) & 1023
         when 'jmp', 'call'
-            insn |= (addr(args[0]) - pc) & 1023
+            insn |= (addr(args[0]) - (pc + 2)) & 1023
         when 'syscall'
             insn |= (1 << 11) # syscall bit
             insn |= (args[0].hex)
