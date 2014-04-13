@@ -5,10 +5,11 @@ require 'socket'
 require 'timeout'
 require 'zlib'
 require 'openssl'
+require 'digest/md5'
 
 RUN_AS_USER = 'mcu'
 SERVER_POOL_NPROCESS = 8
-EMAIL_SECRET = "fufufufufu@challenge.sstic.org"
+EMAIL_SECRET = "#{Digest::MD5.hexdigest('operationnel')}@challenge.sstic.org"
 
 class Emulator
     class EmulatorException < Exception; end
@@ -38,9 +39,9 @@ class Emulator
 ─▐▒▒▒▒▒▒▒▒▒▒▒▌██▀▒▒▒▒▒▒▒▒▀▄▌
 ─▌▒▀▄██▄▒▒▒▒▒▒▒▒▒▒▒░░░░▒▒▒▒▌    VERY CHALLENGING
 ─▌▀▐▄█▄█▌▄▒▀▒▒▒▒▒▒░░░░░░▒▒▒▐
-▐▒▀▐▀▐▀▒▒▄▄▒▄▒▒▒▒▒░░░░░░▒▒▒▒▌   MUCH WIN
+▐▒▀▐▀▐▀▒▒▄▄▒▄▒▒▒▒▒░░░░░░▒▒▒▒▌   SO OPERATIONAL
 ▐▒▒▒▀▀▄▄▒▒▒▄▒▒▒▒▒▒░░░░░░▒▒▒▐
-─▌▒▒▒▒▒▒▀▀▀▒▒▒▒▒▒▒▒░░░░▒▒▒▒▌  HAPPY TIME
+─▌▒▒▒▒▒▒▀▀▀▒▒▒▒▒▒▒▒░░░░▒▒▒▒▌  MUCH WIN
 ─▐▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▐  
 ──▀▄▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▄▒▒▒▒▌ <#{EMAIL_SECRET}>
 ────▀▄▒▒▒▒▒▒▒▒▒▒▄▄▄▀▒▒▒▒▄▀
