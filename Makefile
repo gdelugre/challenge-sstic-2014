@@ -16,7 +16,7 @@ LZ4_DIR=lz4
 TMP_DIR=tmp
 STUB_DIR=stub
 UTILS_DIR=utils
-SRC=main.c chacha.c vm.c
+SRC=main.c chacha.c vm.c vm_handlers.c
 TARGET=sstic14-armageddon.elf
 
 TEXT_ADDR=0x400000
@@ -41,9 +41,9 @@ compress:
 compile_release: util bytecode
 	$(COMPILE_RELEASE) $(SRC)
 	cp start.ASM start.s
+	ruby armor.rb -c aarch64/armor.conf vm_handlers.s
 	for obj in *.s; do \
 		cp $$obj $(TMP_DIR)/$$obj.orig ; \
-		ruby armor.rb -c aarch64/armor.conf $$obj ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \
 	done
 	$(LINK) -Ttext-segment=$(TEXT_ADDR) -Tdata=$(DATA_ADDR) *.o -o $(TARGET)

@@ -301,5 +301,17 @@ enum {
 
 int vm_initialize(vm_memory *, size_t, vm_state **);
 int vm_start(vm_state *);
+void vm_stop(vm_state *, int);
+
+vm_reg_t vm_get_register(vm_state *, int);
+void vm_set_register(vm_state *, int, vm_reg_t);
+vm_addr_t vm_current_instruction_pointer(vm_state *);
+void vm_set_instruction_pointer(vm_state *, vm_reg_t);
+
+int vm_read(vm_state *, vm_addr_t, void *, size_t);
+int vm_write(vm_state *, vm_addr_t, void *, size_t);
+int vm_read_string(vm_state *, vm_addr_t, char *, size_t);
+int vm_read_word(vm_state *, vm_addr_t, vm_word_t *);
+int vm_write_word(vm_state *, vm_addr_t, vm_word_t);
 
 #endif
