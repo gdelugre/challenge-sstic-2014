@@ -50,31 +50,31 @@ void ECRYPT_init(void)
   return;
 }
 
-//static const char sigma[16] = "expand 32-byte k";
-//static const char tau[16] = "expand 16-byte k";
+static const char sigma[16] = "expand 32-byte k";
+static const char tau[16] = "expand 16-byte k";
 
 void ECRYPT_keysetup(ECRYPT_ctx *x,const uint8_t *k,uint32_t kbits,uint32_t ivbits)
 {
-  //const char *constants;
+  const char *constants;
 
   x->input[4] = U8TO32_LITTLE(k + 0);
   x->input[5] = U8TO32_LITTLE(k + 4);
   x->input[6] = U8TO32_LITTLE(k + 8);
   x->input[7] = U8TO32_LITTLE(k + 12);
-  //if (kbits == 256) { /* recommended */
-  //  k += 16;
-  //  constants = sigma;
-  //} else { /* kbits == 128 */
-  //  constants = tau;
-  //}
+  if (kbits == 256) { /* recommended */
+    k += 16;
+    constants = sigma;
+  } else { /* kbits == 128 */
+    constants = tau;
+  }
   x->input[8] = U8TO32_LITTLE(k + 0);
   x->input[9] = U8TO32_LITTLE(k + 4);
   x->input[10] = U8TO32_LITTLE(k + 8);
   x->input[11] = U8TO32_LITTLE(k + 12);
-  x->input[0] = 0x61707865; //U8TO32_LITTLE(constants + 0);
-  x->input[1] = 0x3120646e; //U8TO32_LITTLE(constants + 4);
-  x->input[2] = 0x79622d36; //U8TO32_LITTLE(constants + 8);
-  x->input[3] = 0x6b206574; //U8TO32_LITTLE(constants + 12);
+  x->input[0] = U8TO32_LITTLE(constants + 0);     //0x61707865; 
+  x->input[1] = U8TO32_LITTLE(constants + 4);     //0x3120646e; 
+  x->input[2] = U8TO32_LITTLE(constants + 8);     //0x79622d36; 
+  x->input[3] = U8TO32_LITTLE(constants + 12);    //0x6b206574; 
 }
 
 void ECRYPT_ivsetup(ECRYPT_ctx *x,const uint8_t *iv)
