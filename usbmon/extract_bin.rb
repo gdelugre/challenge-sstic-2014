@@ -58,7 +58,7 @@ File.read(TRACE_FILE).lines
             fail "Bad checksum" if sum(blk[:data]) != packets.last[:hdr][:crc]
             packets.last[:data] = blk[:data]
             pending_data = 0
-        end
+        end rescue nil
     }
 
 first_write = packets.index { |pkt|

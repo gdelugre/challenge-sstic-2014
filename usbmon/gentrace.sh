@@ -12,6 +12,10 @@ usbmon -fu -s 8192 > usbmon.trace &
 adb -s 8113b63c ls /sdcard/
 adb -s 8113b63c ls /sdcard/Documents/
 adb -s 8113b63c ls /data/local/tmp
+
+echo "...Move your mouse..."
+sleep 2
+
 adb -s 8113b63c push $1 /data/local/tmp/badbios.bin
 adb -s 8113b63c ls /data/local/tmp
 
