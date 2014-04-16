@@ -162,14 +162,21 @@ def assemble(lst, base = 0)
     code
 end
 
+FW_VERSION = "v1.33.7"
 SECRET_RC4_KEY = "YeahRiscIsGood!"
-SUCCESS_STR = "Firmware execution completed in $$$$$ CPU cycles.\n"
+INTRO_STR = "Firmware #{FW_VERSION} starting.\n"
+SUCCESS_STR = "Execution completed in $$$$$ CPU cycles.\n"
+END_STR = "Halting.\n"
 
 kind = ARGV.empty? ? 'fw' : ARGV[0]
 program = assemble(<<-LISTING) if kind == 'fw'
 ###
 ### SSTIC 2014, remote firmware
 ### 
+
+mov r1, #{INTRO_STR.size.to_s(16)}
+mov r0, intro_str
+call print
 
 mov r0, 0x1000
 mov r1, secret_key
@@ -196,6 +203,10 @@ call to_dec
 
 mov r1, #{SUCCESS_STR.size.to_s(16)}
 mov r0, goodbye_str
+call print
+
+mov r1, #{END_STR.size.to_s(16)}
+mov r0, end_str
 call print
 
 jmp halt
@@ -413,6 +424,12 @@ to_dec:
 secret_key:
     .data #{SECRET_RC4_KEY.inspect}, 0
 
+intro_str:
+    .data #{INTRO_STR.bytes.map{|c| c.to_s(16)}.join(",")}, 0
+
+end_str:
+    .data #{END_STR.bytes.map{|c| c.to_s(16)}.join(",")}, 0
+
 goodbye_str:
     .data #{
         rc4 = OpenSSL::Cipher::RC4.new.encrypt
@@ -443,7 +460,7 @@ loop:
 mov r0, 0xF000
 syscall 3
 
-mov r0, 0x10F2
+mov r0, 0x11C8
 mov r1, shellcode
 mov r2, 0x100
 call memcpy
