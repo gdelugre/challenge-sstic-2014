@@ -114,7 +114,8 @@ static inline unsigned long parity(unsigned long n)
 
 static inline  unsigned long shuffle(vm_page_t vpage)
 {
-    return (parity(vpage & POLY_SHUFFLER) << (POLY_SIZE-1)) ^ (vpage >> 1);
+    //return (parity(vpage & POLY_SHUFFLER) << (POLY_SIZE-1)) ^ (vpage >> 1);
+    return vpage;
 }
 
 #define VM_CACHE_SIZE 32

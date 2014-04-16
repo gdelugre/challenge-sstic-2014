@@ -25,7 +25,8 @@ static inline unsigned long parity(unsigned long n)
 
 static inline unsigned long shuffle(unsigned long page)
 {
-    return (parity(page & POLY_SHUFFLER) << (POLY_SIZE-1)) ^ (page >> 1);
+    //return (parity(page & POLY_SHUFFLER) << (POLY_SIZE-1)) ^ (page >> 1);
+    return page;
 }
 
 static void hexdump(const unsigned char *addr, size_t size)
