@@ -553,6 +553,10 @@ system_call_read_tsc:
     sysret
 
 reset:
+    mov r1, #{"System reset.\n".size.to_s(16)}
+    mov r0, reset_msg
+    call print
+
     # Install syscall handlers
     mov r4, 2
     mov r1, system_call_halt
@@ -653,6 +657,8 @@ error_bad_addr:
 error_bad_syscall:
     .data "[ERROR] Undefined system call. CPU halted.\\n", 0
 
+reset_msg:
+    .data "System reset.\\n",0
 LISTING
 
 if kind == 'fw'
