@@ -1,5 +1,10 @@
 #!/bin/sh
 
+if [[ $EUID -ne 0 ]]; then
+    echo "Must be run as root." 1>&2
+    exit 1
+fi
+
 adb -s 8113b63c shell rm -f /data/local/tmp/badbios.bin
 modprobe usbmon
 usbmon -fu -s 8192 > usbmon.trace &
