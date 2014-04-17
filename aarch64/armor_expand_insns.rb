@@ -159,7 +159,7 @@ class ExpandCode < ArmorPass
                         p replace if $DEBUG
                         break
                     end
-                end if rand(2).zero?
+                end if rand(4) < 3
                 
                 replace
             }
