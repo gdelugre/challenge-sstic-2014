@@ -27,3 +27,5 @@ ruby extract_bin.rb usbmon.trace $verify_file
 md5sum $1
 md5sum $verify_file
 rm -f $verify_file
+
+cat HELP.txt usbmon.trace | xz > usbtrace.xz

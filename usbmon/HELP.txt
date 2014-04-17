@@ -1,0 +1,11 @@
+Date: Thu, 17 Apr 2015 00:40:34 +0200
+To: <challenge2014@sstic.org>
+Subject: Trace USB
+
+Bonjour,
+
+voici une trace USB enregistrée en branchant mon nouveau téléphone Android sur mon ordinateur personnel air-gapped.
+Je pense qu'un malware transite sur mon téléphone. Pouvez-vous voir de quoi il en retourne ?
+
+--
+

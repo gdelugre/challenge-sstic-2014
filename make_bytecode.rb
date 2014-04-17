@@ -106,8 +106,7 @@ def encode_insn(opcode, *args)
         return encode_insn("movi", args[0], ((value >> 16) & 0xffff).to_s(16)) + 
             encode_insn("ori", args[0], ((value & 0xffff).to_s(16)))
     elsif opcode == 'movr'
-        return encode_insn("xor", args[0], args[0]) +
-            encode_insn("or", args[0], args[1])
+        return encode_insn("ldr", args[0], 'R0', (reg(args[1]) - 1) * 4)
     end
 
     if opcode =~ /^bl?\..*/
