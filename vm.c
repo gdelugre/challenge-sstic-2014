@@ -2,6 +2,7 @@
 //#include <sys/mman.h>
 
 #include "vm.h"
+#include "vm_handlers.h"
 #include "stdlib.h"
 #include "syscalls.h"
 #include "chacha.h"
@@ -31,7 +32,11 @@ static int vm_page_write(vm_state *state, vm_addr_t vaddr, void *buffer)
         return 0;
 
     state->vmem_ctx.input[12] = VM_PAGE(vaddr);
+#ifdef _LP64
     state->vmem_ctx.input[13] = (VM_PAGE(vaddr) >> 32UL);
+#else
+    state->vmem_ctx.input[13] = 0;
+#endif
 
     ECRYPT_encrypt_bytes(&state->vmem_ctx, buffer, data, VM_PAGE_SIZE);
     return VM_PAGE_SIZE;
@@ -89,7 +94,11 @@ static void *vm_page_read(vm_state *state, vm_addr_t vaddr)
 
     //vm_print("memory: data:%p cache:%p\n", data, cache);
     state->vmem_ctx.input[12] = VM_PAGE(vaddr);
+#ifdef _LP64
     state->vmem_ctx.input[13] = (VM_PAGE(vaddr) >> 32UL);
+#else
+    state->vmem_ctx.input[13] = 0;
+#endif
 
     //vm_hexdump(data, VM_PAGE_SIZE);
     ECRYPT_decrypt_bytes(&state->vmem_ctx, data, cache, VM_PAGE_SIZE);

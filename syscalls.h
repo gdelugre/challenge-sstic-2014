@@ -19,6 +19,7 @@ SYSCALL_DECL(syscall1)(int n, long arg1)
     long result;
 
     __asm__ __volatile__ (
+#if defined(__aarch64__)
         "mov x0, %[a1]\n\t"
         "mov x8, %[sys_id]\n\t"
         "svc #0\n\t"
@@ -26,6 +27,17 @@ SYSCALL_DECL(syscall1)(int n, long arg1)
         : [res] "=r" (result)
         : [sys_id] "i" (n), [a1] "r" (arg1)
         : "x0", "x8"
+#elif defined(__arm__)
+        "mov r0, %[a1]\n\t"
+        "mov r7, %[sys_id]\n\t"
+        "svc #0\n\t"
+        "mov %[res], r0\n\t"
+        : [res] "=r" (result)
+        : [sys_id] "i" (n), [a1] "r" (arg1)
+        : "r0", "r7"
+#else
+    #error "Architecture not supported."
+#endif
     );
 
     return result;
@@ -36,6 +48,7 @@ SYSCALL_DECL(syscall2)(int n, long arg1, long arg2)
     long result;
 
     __asm__ __volatile__ (
+#if defined(__aarch64__)
         "mov x1, %[a2]\n\t"
         "mov x0, %[a1]\n\t"
         "mov x8, %[sys_id]\n\t"
@@ -44,6 +57,18 @@ SYSCALL_DECL(syscall2)(int n, long arg1, long arg2)
         : [res] "=r" (result)
         : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2)
         : "x0", "x1", "x8"
+#elif defined(__arm__)
+        "mov r1, %[a2]\n\t"
+        "mov r0, %[a1]\n\t"
+        "mov r7, %[sys_id]\n\t"
+        "svc #0\n\t"
+        "mov %[res], r0\n\t"
+        : [res] "=r" (result)
+        : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2)
+        : "r0", "r1", "r7"
+#else
+    #error "Architecture not supported."
+#endif
     );
 
     return result;
@@ -54,6 +79,7 @@ SYSCALL_DECL(syscall3)(int n, long arg1, long arg2, long arg3)
     long result;
 
     __asm__ __volatile__ (
+#if defined(__aarch64__)
         "mov x2, %[a3]\n\t"
         "mov x1, %[a2]\n\t"
         "mov x0, %[a1]\n\t"
@@ -63,6 +89,19 @@ SYSCALL_DECL(syscall3)(int n, long arg1, long arg2, long arg3)
         : [res] "=r" (result)
         : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3)
         : "x0", "x1", "x2", "x8"
+#elif defined(__arm__)
+        "mov r2, %[a3]\n\t"
+        "mov r1, %[a2]\n\t"
+        "mov r0, %[a1]\n\t"
+        "mov r7, %[sys_id]\n\t"
+        "svc #0\n\t"
+        "mov %[res], r0\n\t"
+        : [res] "=r" (result)
+        : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3)
+        : "r0", "r1", "r2", "r7"
+#else
+    #error "Architecture not supported."
+#endif
     );
 
     return result;
@@ -73,6 +112,7 @@ SYSCALL_DECL(syscall4)(int n, long arg1, long arg2, long arg3, long arg4)
     long result;
 
     __asm__ __volatile__ (
+#if defined(__aarch64__)
         "mov x3, %[a4]\n\t"
         "mov x2, %[a3]\n\t"
         "mov x1, %[a2]\n\t"
@@ -83,6 +123,20 @@ SYSCALL_DECL(syscall4)(int n, long arg1, long arg2, long arg3, long arg4)
         : [res] "=r" (result)
         : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4)
         : "x0", "x1", "x2", "x3", "x8"
+#elif defined(__arm__)
+        "mov r3, %[a4]\n\t"
+        "mov r2, %[a3]\n\t"
+        "mov r1, %[a2]\n\t"
+        "mov r0, %[a1]\n\t"
+        "mov r7, %[sys_id]\n\t"
+        "svc #0\n\t"
+        "mov %[res], r0\n\t"
+        : [res] "=r" (result)
+        : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4)
+        : "r0", "r1", "r2", "r3", "r7"
+#else
+    #error "Architecture not supported."
+#endif
     );
 
     return result;
@@ -93,6 +147,7 @@ SYSCALL_DECL(syscall5)(int n, long arg1, long arg2, long arg3, long arg4, long a
     long result;
 
     __asm__ __volatile__ (
+#if defined(__aarch64__)
         "mov x4, %[a5]\n\t"
         "mov x3, %[a4]\n\t"
         "mov x2, %[a3]\n\t"
@@ -104,6 +159,21 @@ SYSCALL_DECL(syscall5)(int n, long arg1, long arg2, long arg3, long arg4, long a
         : [res] "=r" (result)
         : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4), [a5] "r" (arg5)
         : "x0", "x1", "x2", "x3", "x4", "x8"
+#elif defined(__arm__)
+        "mov r4, %[a5]\n\t"
+        "mov r3, %[a4]\n\t"
+        "mov r2, %[a3]\n\t"
+        "mov r1, %[a2]\n\t"
+        "mov r0, %[a1]\n\t"
+        "mov r7, %[sys_id]\n\t"
+        "svc #0\n\t"
+        "mov %[res], r0\n\t"
+        : [res] "=r" (result)
+        : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4), [a5] "r" (arg5)
+        : "r0", "r1", "r2", "r3", "r4", "r7"
+#else
+    #error "Architecture not supported."
+#endif
     );
 
 
@@ -115,6 +185,7 @@ SYSCALL_DECL(syscall6)(int n, long arg1, long arg2, long arg3, long arg4, long a
     long result;
 
     __asm__ __volatile__ (
+#if defined(__aarch64__)
         "mov x5, %[a6]\n\t"
         "mov x4, %[a5]\n\t"
         "mov x3, %[a4]\n\t"
@@ -127,6 +198,22 @@ SYSCALL_DECL(syscall6)(int n, long arg1, long arg2, long arg3, long arg4, long a
         : [res] "=r" (result)
         : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4), [a5] "r" (arg5), [a6] "r" (arg6)
         : "x0", "x1", "x2", "x3", "x4", "x5", "x8"
+#elif defined(__arm__)
+        "mov r5, %[a6]\n\t"
+        "mov r4, %[a5]\n\t"
+        "mov r3, %[a4]\n\t"
+        "mov r2, %[a3]\n\t"
+        "mov r1, %[a2]\n\t"
+        "mov r0, %[a1]\n\t"
+        "mov r7, %[sys_id]\n\t"
+        "svc #0\n\t"
+        "mov %[res], r0\n\t"
+        : [res] "=r" (result)
+        : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4), [a5] "r" (arg5), [a6] "r" (arg6)
+        : "r0", "r1", "r2", "r3", "r4", "r5", "r7"
+#else
+    #error "Architecture not supported."
+#endif
     );
 
     return result;
@@ -140,7 +227,11 @@ _Noreturn SYSCALL_DECL(exit)(int status)
 
 SYSCALL_DECL(mmap)(void *addr, size_t len, int prot, int flags, int filedes, off_t off)
 {
+#ifdef __arm__
+    return sys_syscall6(__NR_mmap2, (long)addr, len, prot, flags, filedes, off);
+#else
     return sys_syscall6(__NR_mmap, (long)addr, len, prot, flags, filedes, off);
+#endif
 }
 
 SYSCALL_DECL(munmap)(void *addr, size_t len)

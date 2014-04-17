@@ -103,14 +103,14 @@ typedef vm_word_t vm_reg_t;
 #define VM_MIN_ADDR ((vm_addr_t) 0UL)
 #define VM_MAX_ADDR ((vm_addr_t) ((1UL << POLY_SIZE) << VM_PAGE_SHIFT) - 1)
 
-static inline unsigned long parity(unsigned long n)
+/*static inline unsigned long parity(unsigned long n)
 {
     n ^= (n >> 32UL);
     n ^= (n >> 16UL);
     n ^= (n >> 8UL);
     n ^= (n >> 4UL);    
     return (0x6996 >> (n & 0xfUL)) & 1;
-}
+}*/
 
 static inline  unsigned long shuffle(vm_page_t vpage)
 {
