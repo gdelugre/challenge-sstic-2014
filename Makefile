@@ -1,9 +1,12 @@
-CC=aarch64-linux-gnu-gcc
-AS=aarch64-linux-gnu-as
-LD=aarch64-linux-gnu-ld
-STRIP=aarch64-linux-gnu-strip
-OBJDUMP=aarch64-linux-gnu-objdump
-OBJCOPY=aarch64-linux-gnu-objcopy
+ARCH=aarch64
+PREFIX=$(ARCH)-linux-gnu
+CC=$(PREFIX)-gcc
+AS=$(PREFIX)-as
+LD=$(PREFIX)-ld
+STRIP=$(PREFIX)-strip
+OBJDUMP=$(PREFIX)-objdump
+OBJCOPY=$(PREFIX)-objcopy
+ARMOR=ruby armor.rb -c $(ARCH)/armor.conf
 QEMU=~/tmp/qemu/aarch64-linux-user/qemu-aarch64
 CFLAGS_RELEASE=-Wall -std=gnu11 -mcpu=generic+nosimd+nofp -O2 -static -nostdlib -nodefaultlibs -ffixed-x28
 CFLAGS_DEBUG=-Wall -std=gnu11 -mcpu=generic+nosimd+nofp -O2 -static -ffixed-x28 -DDEBUG
@@ -40,8 +43,8 @@ compress:
 
 compile_release: util bytecode
 	$(COMPILE_RELEASE) $(SRC)
+	$(ARMOR) vm_handlers.s
 	cp start.ASM start.s
-	ruby armor.rb -c aarch64/armor.conf vm_handlers.s
 	for obj in *.s; do \
 		cp $$obj $(TMP_DIR)/$$obj.orig ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \
