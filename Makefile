@@ -1,5 +1,8 @@
 ARCH=aarch64
-PREFIX=$(ARCH)-linux-gnu
+OS=linux
+#ABI=gnueabihf
+ABI=gnu
+PREFIX=$(ARCH)-$(OS)-$(ABI)
 CC=$(PREFIX)-gcc
 AS=$(PREFIX)-as
 LD=$(PREFIX)-ld
@@ -8,8 +11,11 @@ OBJDUMP=$(PREFIX)-objdump
 OBJCOPY=$(PREFIX)-objcopy
 ARMOR=ruby armor.rb -c $(ARCH)/armor.conf
 QEMU=~/tmp/qemu/aarch64-linux-user/qemu-aarch64
-CFLAGS_RELEASE=-Wall -std=gnu11 -mcpu=generic+nosimd+nofp -O2 -static -nostdlib -nodefaultlibs -ffixed-x28
-CFLAGS_DEBUG=-Wall -std=gnu11 -mcpu=generic+nosimd+nofp -O2 -static -ffixed-x28 -DDEBUG
+CFLAGS_COMMON=-Wall -std=gnu11 -O2 -static
+CFLAGS_MACHDEP=-mcpu=generic+nosimd+nofp -ffixed-x28
+#CFLAGS_MACHDEP=-mcpu=generic-armv7-a -mhard-float -mfpu=vfp
+CFLAGS_RELEASE=$(CFLAGS_MACHDEP) $(CFLAGS_COMMON) -nostdlib -nodefaultlibs
+CFLAGS_DEBUG=$(CFLAGS_MACHDEP) $(CFLAGS_COMMON) -DDEBUG
 LDFLAGS=-estart
 COMPILE_RELEASE=$(CC) $(CFLAGS_RELEASE) -S
 COMPILE_DEBUG=$(CC) $(CFLAGS_DEBUG)
@@ -35,7 +41,7 @@ dirs:
 
 compress:
 	$(UTILS_DIR)/compress_elf.rb $(TARGET) $(TMP_DIR)/elf_map.h
-	$(CC) $(CFLAGS_RELEASE) $(STUB_DIR)/start.S $(STUB_DIR)/stub.c $(LZ4_DIR)/lz4_reduced.c -I. -I$(TMP_DIR) -o $(TARGET).packed -Wl,-Ttext-segment=0x10000
+	$(CC) $(CFLAGS_RELEASE) $(STUB_DIR)/$(ARCH)/start.S $(STUB_DIR)/stub.c $(LZ4_DIR)/lz4_reduced.c -I. -I$(TMP_DIR) -o $(TARGET).packed -Wl,-Ttext-segment=0x10000
 	$(STRIP) $(TARGET).packed
 	$(OBJCOPY) -w -R '.note.gnu.build-id' -R .comment $(TARGET).packed
 	#rm -f *.o
@@ -43,8 +49,8 @@ compress:
 
 compile_release: util bytecode
 	$(COMPILE_RELEASE) $(SRC)
-	$(ARMOR) vm_handlers.s
-	cp start.ASM start.s
+	#$(ARMOR) vm_handlers.s
+	cp $(STUB_DIR)/$(ARCH)/start.S start.s
 	for obj in *.s; do \
 		cp $$obj $(TMP_DIR)/$$obj.orig ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \

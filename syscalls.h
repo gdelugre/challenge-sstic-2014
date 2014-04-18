@@ -29,11 +29,11 @@ SYSCALL_DECL(syscall1)(int n, long arg1)
         : "x0", "x8"
 #elif defined(__arm__)
         "mov r0, %[a1]\n\t"
-        "mov r7, %[sys_id]\n\t"
+        "ldr r7, %[sys_id]\n\t"
         "svc #0\n\t"
         "mov %[res], r0\n\t"
         : [res] "=r" (result)
-        : [sys_id] "i" (n), [a1] "r" (arg1)
+        : [sys_id] "m" (n), [a1] "r" (arg1)
         : "r0", "r7"
 #else
     #error "Architecture not supported."
@@ -60,11 +60,11 @@ SYSCALL_DECL(syscall2)(int n, long arg1, long arg2)
 #elif defined(__arm__)
         "mov r1, %[a2]\n\t"
         "mov r0, %[a1]\n\t"
-        "mov r7, %[sys_id]\n\t"
+        "ldr r7, %[sys_id]\n\t"
         "svc #0\n\t"
         "mov %[res], r0\n\t"
         : [res] "=r" (result)
-        : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2)
+        : [sys_id] "m" (n), [a1] "r" (arg1), [a2] "r" (arg2)
         : "r0", "r1", "r7"
 #else
     #error "Architecture not supported."
@@ -93,11 +93,11 @@ SYSCALL_DECL(syscall3)(int n, long arg1, long arg2, long arg3)
         "mov r2, %[a3]\n\t"
         "mov r1, %[a2]\n\t"
         "mov r0, %[a1]\n\t"
-        "mov r7, %[sys_id]\n\t"
+        "ldr r7, %[sys_id]\n\t"
         "svc #0\n\t"
         "mov %[res], r0\n\t"
         : [res] "=r" (result)
-        : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3)
+        : [sys_id] "m" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3)
         : "r0", "r1", "r2", "r7"
 #else
     #error "Architecture not supported."
@@ -128,11 +128,11 @@ SYSCALL_DECL(syscall4)(int n, long arg1, long arg2, long arg3, long arg4)
         "mov r2, %[a3]\n\t"
         "mov r1, %[a2]\n\t"
         "mov r0, %[a1]\n\t"
-        "mov r7, %[sys_id]\n\t"
+        "ldr r7, %[sys_id]\n\t"
         "svc #0\n\t"
         "mov %[res], r0\n\t"
         : [res] "=r" (result)
-        : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4)
+        : [sys_id] "m" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4)
         : "r0", "r1", "r2", "r3", "r7"
 #else
     #error "Architecture not supported."
@@ -165,11 +165,11 @@ SYSCALL_DECL(syscall5)(int n, long arg1, long arg2, long arg3, long arg4, long a
         "mov r2, %[a3]\n\t"
         "mov r1, %[a2]\n\t"
         "mov r0, %[a1]\n\t"
-        "mov r7, %[sys_id]\n\t"
+        "ldr r7, %[sys_id]\n\t"
         "svc #0\n\t"
         "mov %[res], r0\n\t"
         : [res] "=r" (result)
-        : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4), [a5] "r" (arg5)
+        : [sys_id] "m" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4), [a5] "r" (arg5)
         : "r0", "r1", "r2", "r3", "r4", "r7"
 #else
     #error "Architecture not supported."
@@ -205,11 +205,11 @@ SYSCALL_DECL(syscall6)(int n, long arg1, long arg2, long arg3, long arg4, long a
         "mov r2, %[a3]\n\t"
         "mov r1, %[a2]\n\t"
         "mov r0, %[a1]\n\t"
-        "mov r7, %[sys_id]\n\t"
+        "ldr r7, %[sys_id]\n\t"
         "svc #0\n\t"
         "mov %[res], r0\n\t"
         : [res] "=r" (result)
-        : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4), [a5] "r" (arg5), [a6] "r" (arg6)
+        : [sys_id] "m" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4), [a5] "r" (arg5), [a6] "r" (arg6)
         : "r0", "r1", "r2", "r3", "r4", "r5", "r7"
 #else
     #error "Architecture not supported."
