@@ -1,7 +1,7 @@
 ARCH=arm
-VENDOR=hardfloat
+VENDOR=
 OS=linux
-ABI=gnueabi
+ABI=gnueabihf
 PREFIX:=$(ARCH)-
 ifneq ($(VENDOR),)
 PREFIX:=$(PREFIX)$(VENDOR)-
@@ -23,8 +23,13 @@ OBJCOPY=$(PREFIX)-objcopy
 ARMOR=ruby armor.rb -c $(ARCH)/armor.conf
 QEMU=~/tmp/qemu/aarch64-linux-user/qemu-aarch64
 CFLAGS_COMMON=-Wall -std=gnu11 -O2 -static -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/chacha
-#CFLAGS_MACHDEP=-mcpu=generic+nosimd+nofp -ffixed-x28
-CFLAGS_MACHDEP=-mcpu=generic-armv7-a -mhard-float -mfloat-abi=hard -mfpu=vfpv3
+ifeq ($(ARCH),aarch64)
+    CFLAGS_MACHDEP=-mcpu=generic+nosimd+nofp -ffixed-x28
+else
+ifeq ($(ARCH),arm)
+    CFLAGS_MACHDEP=-mcpu=generic-armv7-a
+endif
+endif
 CFLAGS_RELEASE=$(CFLAGS_MACHDEP) $(CFLAGS_COMMON) -nostdlib -nodefaultlibs
 CFLAGS_DEBUG=$(CFLAGS_MACHDEP) $(CFLAGS_COMMON) -DDEBUG
 LDFLAGS=-estart
@@ -58,6 +63,7 @@ compile_release: util bytecode
 	$(COMPILE_RELEASE) $(SRC)
 	#$(ARMOR) vm_handlers.s
 	cp $(STUB_DIR)/$(ARCH)/start.S start.s
+	cp $(STUB_DIR)/$(ARCH)/div.S div.s
 	for obj in *.s; do \
 		cp $$obj $(TMP_DIR)/$$obj.orig ; \
 		$(ASSEMBLE) $$obj -o $$obj.o ; \

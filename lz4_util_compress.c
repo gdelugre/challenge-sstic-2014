@@ -26,6 +26,8 @@ int main(int argc, char *argv[])
 
     fseek(fpi, 0, SEEK_END); input_size = ftell(fpi); fseek(fpi, 0, SEEK_SET);
 
+    printf("%s: input file size is %ld bytes.\n", argv[0], input_size);
+
     input_buffer = malloc(input_size);
     output_buffer = malloc(input_size);
     if ( !input_size || !output_buffer )

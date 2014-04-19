@@ -5,11 +5,30 @@ require 'tempfile'
 exit(1) if ARGV.size < 2
 
 elf = File.binread ARGV[0]
-entry = elf[0x18,8].unpack('Q')[0]
-phoff = elf[0x20,8].unpack('Q')[0]
-ehsize = elf[34, 2].unpack('v')[0]
-phnum = elf[0x38,2].unpack('v')[0]
-phentsize = 56
+
+if elf[4].ord == 1 # ELF32
+    ELFCLASS = 32
+elsif elf[4].ord == 2 # ELF64
+    ELFCLASS = 64
+else
+    fail "Unknown ELF class."
+end
+
+case ELFCLASS
+    when 64
+    entry = elf[0x18,8].unpack('Q')[0]
+    phoff = elf[0x20,8].unpack('Q')[0]
+    ehsize = elf[0x34, 2].unpack('v')[0]
+    phnum = elf[0x38,2].unpack('v')[0]
+    phentsize = 56
+    
+    when 32
+    entry = elf[0x18,4].unpack('V')[0]
+    phoff = elf[0x1c,4].unpack('V')[0]
+    ehsize = elf[0x28,2].unpack('v')[0]
+    phnum = elf[0x2c,2].unpack('v')[0]
+    phentsize = 32
+end
 
 source = <<HEADER
 #ifndef _H_ELF_MAP
@@ -69,7 +88,13 @@ elf[phoff, phdrs.size] = "\x00" * phdrs.size
 segdefs = []
 for i in (0 ... phnum)
     phdr = phdrs[phentsize * i, phentsize]
-    type, flags, offset, vaddr, paddr, filesz, memsz, align = phdr.unpack('V2Q6')
+    if ELFCLASS == 64
+        type, flags, offset, vaddr, paddr, filesz, memsz, align = phdr.unpack('V2Q6')
+    elsif ELFCLASS == 32
+        type, offset, vaddr, paddr, filesz, memsz, flags, align = phdr.unpack('V8')
+    end
+
+    next if type != 1 # only treats LOAD segments
 
     segdata, compressed = '', false
 

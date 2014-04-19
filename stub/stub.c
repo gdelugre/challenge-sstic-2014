@@ -47,6 +47,7 @@ static int exec_elf_program(long argc, char *argv[], struct elf_memory_map *map)
             return 1;
     }
 
+#if defined(__aarch64__)
     __asm__ __volatile__ (
         "mov sp, %[av]\n\t"
         "sub sp, sp, #8\n\t"
@@ -58,6 +59,19 @@ static int exec_elf_program(long argc, char *argv[], struct elf_memory_map *map)
         : [av] "r" (argv), [ac] "r" (argc), [ep] "r" (entry)
         : "x0", "x2"
     );
+#elif defined(__arm__)
+    __asm__ __volatile__ (
+        "mov sp, %[av]\n\t"
+        "sub sp, sp, #4\n\t"
+        "str %[ac], [sp, #0]\n\t"
+        "mov r2, %[ep]\n\t"
+        "blx r2\n\t"
+        "mov %[res], r0\n\t"
+        : [res] "=r" (result)
+        : [av] "r" (argv), [ac] "r" (argc), [ep] "r" (entry)
+        : "r0", "r2"
+    );
+#endif
 
     return result;
 }

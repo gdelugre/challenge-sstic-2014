@@ -1,8 +1,8 @@
 	.cpu generic
 	.text
-	.globl start
-	.type start,#function
-start:
+	.globl _start
+	.type _start,#function
+_start:
 	mov x30, #0
 	mov x29, sp
 	ldr x0, [sp,#0]
