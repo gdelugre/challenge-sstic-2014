@@ -1,8 +1,19 @@
-ARCH=aarch64
+ARCH=arm
+VENDOR=hardfloat
 OS=linux
-#ABI=gnueabihf
-ABI=gnu
-PREFIX=$(ARCH)-$(OS)-$(ABI)
+ABI=gnueabi
+PREFIX:=$(ARCH)-
+ifneq ($(VENDOR),)
+PREFIX:=$(PREFIX)$(VENDOR)-
+endif
+PREFIX:=$(PREFIX)$(OS)-$(ABI)
+
+LZ4_DIR=lz4
+TMP_DIR=tmp
+STUB_DIR=stub
+UTILS_DIR=utils
+INCLUDE_DIR=include
+
 CC=$(PREFIX)-gcc
 AS=$(PREFIX)-as
 LD=$(PREFIX)-ld
@@ -11,9 +22,9 @@ OBJDUMP=$(PREFIX)-objdump
 OBJCOPY=$(PREFIX)-objcopy
 ARMOR=ruby armor.rb -c $(ARCH)/armor.conf
 QEMU=~/tmp/qemu/aarch64-linux-user/qemu-aarch64
-CFLAGS_COMMON=-Wall -std=gnu11 -O2 -static
-CFLAGS_MACHDEP=-mcpu=generic+nosimd+nofp -ffixed-x28
-#CFLAGS_MACHDEP=-mcpu=generic-armv7-a -mhard-float -mfpu=vfp
+CFLAGS_COMMON=-Wall -std=gnu11 -O2 -static -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/chacha
+#CFLAGS_MACHDEP=-mcpu=generic+nosimd+nofp -ffixed-x28
+CFLAGS_MACHDEP=-mcpu=generic-armv7-a -mhard-float -mfloat-abi=hard -mfpu=vfpv3
 CFLAGS_RELEASE=$(CFLAGS_MACHDEP) $(CFLAGS_COMMON) -nostdlib -nodefaultlibs
 CFLAGS_DEBUG=$(CFLAGS_MACHDEP) $(CFLAGS_COMMON) -DDEBUG
 LDFLAGS=-estart
@@ -21,10 +32,6 @@ COMPILE_RELEASE=$(CC) $(CFLAGS_RELEASE) -S
 COMPILE_DEBUG=$(CC) $(CFLAGS_DEBUG)
 ASSEMBLE=$(AS)
 LINK=$(LD) $(LDFLAGS)
-LZ4_DIR=lz4
-TMP_DIR=tmp
-STUB_DIR=stub
-UTILS_DIR=utils
 SRC=main.c chacha.c vm.c vm_handlers.c
 TARGET=sstic14-armageddon.elf
 
@@ -83,7 +90,7 @@ gdb:
 	$(QEMU) -g 1234 $(TARGET)
 
 util:
-	gcc chacha.c chacha_util_crypt.c -o $(UTILS_DIR)/chacha_crypt
+	gcc -I$(INCLUDE_DIR)/chacha chacha.c chacha_util_crypt.c -o $(UTILS_DIR)/chacha_crypt
 	gcc lz4_util_compress.c $(LZ4_DIR)/lz4.c $(LZ4_DIR)/lz4hc.c -o $(UTILS_DIR)/lz4_util_compress
 	ln -sf lz4_util_compress $(UTILS_DIR)/lz4hc_util_compress
 

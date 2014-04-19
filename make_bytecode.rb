@@ -8,7 +8,7 @@ PROGRAM_SIZE = NUM_PAGES * 64
 
 LABELS = {}
 
-OPCODE_TABLE = %w{
+OPCODE_TABLE = Hash[%w{
     movi 
     ori 
     ldr 
@@ -40,7 +40,7 @@ OPCODE_TABLE = %w{
     hlt 
     sys
     par
-}.each_with_index.to_h
+}.each_with_index.to_a]
   
 REGISTERS = %w{R0 R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11 R12 R13 R14 R15}
 CONDITIONS = %w{al nev eqz neqz ltz gtz ltez gtez}

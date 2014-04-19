@@ -199,17 +199,17 @@ SYSCALL_DECL(syscall6)(int n, long arg1, long arg2, long arg3, long arg4, long a
         : [sys_id] "i" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4), [a5] "r" (arg5), [a6] "r" (arg6)
         : "x0", "x1", "x2", "x3", "x4", "x5", "x8"
 #elif defined(__arm__)
-        "mov r5, %[a6]\n\t"
-        "mov r4, %[a5]\n\t"
-        "mov r3, %[a4]\n\t"
-        "mov r2, %[a3]\n\t"
-        "mov r1, %[a2]\n\t"
-        "mov r0, %[a1]\n\t"
+        "ldr r5, %[a6]\n\t"
+        "ldr r4, %[a5]\n\t"
+        "ldr r3, %[a4]\n\t"
+        "ldr r2, %[a3]\n\t"
+        "ldr r1, %[a2]\n\t"
+        "ldr r0, %[a1]\n\t"
         "ldr r7, %[sys_id]\n\t"
         "svc #0\n\t"
         "mov %[res], r0\n\t"
         : [res] "=r" (result)
-        : [sys_id] "m" (n), [a1] "r" (arg1), [a2] "r" (arg2), [a3] "r" (arg3), [a4] "r" (arg4), [a5] "r" (arg5), [a6] "r" (arg6)
+        : [sys_id] "m" (n), [a1] "m" (arg1), [a2] "m" (arg2), [a3] "m" (arg3), [a4] "m" (arg4), [a5] "m" (arg5), [a6] "m" (arg6)
         : "r0", "r1", "r2", "r3", "r4", "r5", "r7"
 #else
     #error "Architecture not supported."
