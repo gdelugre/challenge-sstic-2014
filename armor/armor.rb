@@ -284,7 +284,7 @@ class AssemblyFileParser
                 block_from = line_number
                 current_label = $1
 
-            elsif line.length > 1 and line[0] == ?\t and line[1] != ?.
+            elsif line.length > 1 and line[0] == ?\t and not %w{. @}.include?(line[1])
                 insns.push(insn = @cpu.parse_instruction(line))
                 block_from ||= line_number
                 if insn.is_branch?

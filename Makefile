@@ -43,10 +43,18 @@ TARGET=sstic14-armageddon.elf
 TEXT_ADDR=0x400000
 DATA_ADDR=0x500000
 
-all: debug 
+all: check_toolchain debug 
 
 debug: dirs compile_debug
 release: dirs compile_release compress
+
+check_toolchain:
+	@which $(CC) > /dev/null
+	@which $(AS) > /dev/null
+	@which $(LD) > /dev/null
+	@which $(STRIP) > /dev/null
+	@which $(OBJDUMP) > /dev/null
+	@which $(OBJCOPY) > /dev/null
 
 dirs:
 	mkdir -p $(TMP_DIR)
@@ -61,7 +69,7 @@ compress:
 
 compile_release: util bytecode
 	$(COMPILE_RELEASE) $(SRC)
-	#$(ARMOR) vm_handlers.s
+	$(ARMOR) vm_handlers.s
 	cp $(STUB_DIR)/$(ARCH)/start.S start.s
 	cp $(STUB_DIR)/$(ARCH)/div.S div.s
 	for obj in *.s; do \
