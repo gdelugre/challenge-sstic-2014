@@ -236,3 +236,4 @@ class CPU::AArch64 < CPU
     end
 end
 
+@current_cpu = CPU::AArch64

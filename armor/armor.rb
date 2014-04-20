@@ -15,6 +15,10 @@ Usage: #{$0} <assembly-file> -e <pass> [-o output]
                 options[:output] = o
             end
 
+            opts.on("-a", "--arch <arch>", "Target architecture.") do |a|
+                options[:target_arch] = a
+            end
+
             opts.on("-c", "--config <file>", "Load configuration file.") do |c|
                 options[:cfg_file] = c
             end
@@ -326,17 +330,25 @@ class ArmorPass
     end
 end
 
-$: << "."
-require 'aarch64/cpu'
-Dir["aarch64/armor_*.rb"].each {|mod| require mod}
-
 @options = OptParser.parse(ARGV)
 if ARGV.empty?
     STDERR.puts "No assembly file given."
     exit 1
 end
 
-assembly = AssemblyFileParser.new(CPU::AArch64, ARGV[0])
+if @options[:target_arch].nil?
+    STDERR.puts "No target architecture specified."
+    exit 1
+end
+
+@arch_dir = @options[:target_arch].downcase
+@current_dir = File.dirname(__FILE__)
+
+$: << @current_dir
+require "#{@arch_dir}/cpu"
+Dir["#{@current_dir}/#{@arch_dir}/armor_*.rb"].each {|mod| require File.join(@arch_dir, File.basename(mod))}
+
+assembly = AssemblyFileParser.new(@current_cpu, ARGV[0])
 
 #p CPU::AArch64::NOOP.last.to_re
 #p "\tmadd x25, x3, xzr, x25" =~ CPU::AArch64::NOOP.last.to_re
@@ -350,7 +362,7 @@ assembly = AssemblyFileParser.new(CPU::AArch64, ARGV[0])
 #p $~
 #exit
 
-config = YAML.load File.read(@options[:cfg_file] || "aarch64/armor.conf")
+config = YAML.load File.read(@options[:cfg_file] || File.join(@current_dir, @arch_dir, "armor.conf"))
 $DEBUG = true if config['general']['debug']
 
 while not (remaining = config['modules'].select{|mod, cfg| cfg['enabled'] && cfg['passes'] > 0}).empty?

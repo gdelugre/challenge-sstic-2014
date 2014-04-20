@@ -1,7 +1,7 @@
-ARCH=arm
+ARCH=aarch64
 VENDOR=
 OS=linux
-ABI=gnueabihf
+ABI=gnu
 PREFIX:=$(ARCH)-
 ifneq ($(VENDOR),)
 PREFIX:=$(PREFIX)$(VENDOR)-
@@ -20,7 +20,7 @@ LD=$(PREFIX)-ld
 STRIP=$(PREFIX)-strip
 OBJDUMP=$(PREFIX)-objdump
 OBJCOPY=$(PREFIX)-objcopy
-ARMOR=ruby armor.rb -c $(ARCH)/armor.conf
+ARMOR=ruby armor/armor.rb -a $(ARCH)
 QEMU=~/tmp/qemu/aarch64-linux-user/qemu-aarch64
 CFLAGS_COMMON=-Wall -std=gnu11 -O2 -static -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/chacha
 ifeq ($(ARCH),aarch64)
@@ -32,7 +32,7 @@ endif
 endif
 CFLAGS_RELEASE=$(CFLAGS_MACHDEP) $(CFLAGS_COMMON) -nostdlib -nodefaultlibs
 CFLAGS_DEBUG=$(CFLAGS_MACHDEP) $(CFLAGS_COMMON) -DDEBUG
-LDFLAGS=-estart
+LDFLAGS=
 COMPILE_RELEASE=$(CC) $(CFLAGS_RELEASE) -S
 COMPILE_DEBUG=$(CC) $(CFLAGS_DEBUG)
 ASSEMBLE=$(AS)
